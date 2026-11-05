@@ -132,7 +132,7 @@ export class SubagentService {
       })
     }
 
-    const claim = this.deps.turns.claim(childSessionId)
+    const claim = await this.deps.turns.claim(childSessionId)
     try {
       await this.appendAndEmit(parentSessionId, 'subagent_spawned', {
         childSessionId,
@@ -142,7 +142,7 @@ export class SubagentService {
         ...(spec.maxSteps !== undefined ? { maxSteps: spec.maxSteps } : {}),
       })
     } catch (err) {
-      this.deps.turns.settle(claim.turnId, 'error')
+      this.deps.turns.settle(childSessionId, 'error')
       throw err
     }
 

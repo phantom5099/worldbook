@@ -5,7 +5,7 @@ cordis 装配与进程入口。源码 `src/`：`app.ts`（装配）、`main.ts`�
 ## 结构
 
 - `DbService`（cordis Service，name `db`）：postgres 连接池 + `ensureSchema`（幂等建表），stop 时关闭——唯一有生命周期的服务。
-- `createApp(config)` / `startApp(config)`：装配插件把 db/session/context/model/tools/turns/sink/agent/subagent 经 `ctx.set` 注册到 ctx；`database: {url}` 时声明 `inject: {db: required}`，`{memory: true}` 时用 MemoryStore（开发/测试，无 PG 依赖）。
+- `createApp(config)` / `startApp(config)`：装配插件把 db/session/context/model/tools/turns/sink/agent/subagent 经 `ctx.set` 注册到 ctx；`database: {url}` 时声明 `inject: {db: required}`，`{memory: true}` 时用 MemoryStore（开发/测试，无 PG 依赖）。`TurnRegistry` 以 `sessionTurnIds(session)` 构造，回合编号从会话日志续接。
 - `config.http?: {port, host?}`：startApp 在 ctx.start() 后用 @worldbook/http 的 `createHttpServer` 启动传输层，句柄经 `ctx.set('http', ...)` 暴露（`ctx.http.port()` 取实际端口），`ctx.on('dispose')` 时 stop。
 - `registerSubagentTools(registry, resolve)`：把 spawn / send_message / wait_subagent 三个 ToolDefinition 注册进装配期注册表；`resolve` 闭包延迟到执行期取 SubagentService。
 - `config.wakeOnResult`（默认 true）：SubagentService 的 `wake(sessionId, seq)` 回调接到 `AgentService.wake`，子代理结果/消息到达时以对应事件 seq 唤醒会话（活跃 turn 期间挂起，收尾时未被读到则补开一轮）；置 false 时 SubagentService 不持有 `wake`。

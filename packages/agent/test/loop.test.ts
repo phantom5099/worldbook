@@ -8,7 +8,7 @@ import { EventSink } from '@worldbook/sink'
 import { TurnRegistry, TurnAlreadyActiveError } from '@worldbook/turn'
 import { ToolRegistry } from '@worldbook/tool'
 import { MockModelClient } from '@worldbook/model'
-import { AgentService } from '../src/index.js'
+import { AgentService, sessionTurnIds } from '../src/index.js'
 import type { SinkFrame } from '@worldbook/sink'
 import type { ModelEvent, ModelRequest } from '@worldbook/model'
 
@@ -59,7 +59,7 @@ function setup(opts?: { maxSteps?: number }) {
   const context = new ContextService(session)
   const model = new MockModelClient()
   const registry = new ToolRegistry()
-  const turns = new TurnRegistry()
+  const turns = new TurnRegistry(sessionTurnIds(session))
   const sink = new EventSink()
   // AgentService 持有 ToolService 快照，必须在工具注册完成后再构造
   const makeAgent = () =>
@@ -95,7 +95,7 @@ describe('agent loop', () => {
     const sessionId = await session.createSession()
 
     const frames = collect(sink, sessionId)
-    const handle = makeAgent().start(sessionId, '进入酒馆')
+    const handle = await makeAgent().start(sessionId, '进入酒馆')
     const reason = await handle.done
     sink.close(sessionId)
     const collected = await frames
@@ -144,7 +144,7 @@ describe('agent loop', () => {
     model.enqueue({ text: '收到 ping' })
     const sessionId = await session.createSession()
 
-    const handle = makeAgent().start(sessionId, '调用 echo')
+    const handle = await makeAgent().start(sessionId, '调用 echo')
     expect(await handle.done).toBe('done')
 
     const history = await session.getHistory(sessionId)
@@ -192,7 +192,8 @@ describe('agent loop', () => {
     model.enqueue({ text: '工具坏了，我直接回答' })
     const sessionId = await session.createSession()
 
-    expect(await makeAgent().start(sessionId, 'x').done).toBe('done')
+    const handle = await makeAgent().start(sessionId, 'x')
+    expect(await handle.done).toBe('done')
     const history = await session.getHistory(sessionId)
     expect(history[5]!.payload).toMatchObject({ callId: 'call_1', status: 'error', result: '炸了' })
     expect(history[history.length - 1]!.payload).toMatchObject({ reason: 'done' })
@@ -211,7 +212,8 @@ describe('agent loop', () => {
     model.enqueue({ text: '不该被消费' })
     const sessionId = await session.createSession()
 
-    expect(await makeAgent().start(sessionId, 'x').done).toBe('max_steps')
+    const handle = await makeAgent().start(sessionId, 'x')
+    expect(await handle.done).toBe('max_steps')
     const history = await session.getHistory(sessionId)
     expect(history[history.length - 1]!.payload).toMatchObject({ reason: 'max_steps', steps: 2 })
     expect(model.requests).toHaveLength(2)
@@ -237,7 +239,7 @@ describe('agent loop', () => {
     })
     const sessionId = await session.createSession()
 
-    const handle = custom.start(sessionId, '慢任务')
+    const handle = await custom.start(sessionId, '慢任务')
     await new Promise((r) => setTimeout(r, 20))
     handle.interrupt('用户取消')
     expect(await handle.done).toBe('interrupted')
@@ -255,7 +257,7 @@ describe('agent loop', () => {
     const sessionId = await session.createSession()
     const svc = makeAgent()
 
-    const handle = svc.start(sessionId, 'x')
+    const handle = await svc.start(sessionId, 'x')
     handle.interrupt()
     expect(await handle.done).toBe('interrupted')
     expect(turns.getState(sessionId)).toMatchObject({ phase: 'cancelled' })
@@ -268,8 +270,8 @@ describe('agent loop', () => {
     model.enqueue({ text: '第一轮' })
     const sessionId = await session.createSession()
     const agent = makeAgent()
-    const handle = agent.start(sessionId, '第一')
-    expect(() => agent.start(sessionId, '第二')).toThrow(TurnAlreadyActiveError)
+    const handle = await agent.start(sessionId, '第一')
+    await expect(agent.start(sessionId, '第二')).rejects.toThrow(TurnAlreadyActiveError)
     expect(await handle.done).toBe('done')
   })
 
@@ -278,7 +280,8 @@ describe('agent loop', () => {
     model.enqueue({ error: 'boom' })
     const sessionId = await session.createSession()
 
-    expect(await makeAgent().start(sessionId, 'x').done).toBe('error')
+    const handle = await makeAgent().start(sessionId, 'x')
+    expect(await handle.done).toBe('error')
     expect(turns.getState(sessionId)).toMatchObject({ phase: 'failed', reason: 'error' })
     const history = await session.getHistory(sessionId)
     const ended = history[history.length - 1]!
@@ -297,7 +300,7 @@ describe('agent loop', () => {
     model.enqueue({ text: '已汇总' })
 
     const agent = makeAgent()
-    const handle = agent.wake(sessionId, injected!.seq)!
+    const handle = (await agent.wake(sessionId, injected!.seq))!
     expect(await handle.done).toBe('done')
 
     const history = await session.getHistory(sessionId)
@@ -336,7 +339,7 @@ describe('agent loop', () => {
       sink,
     })
     const sessionId = await session.createSession()
-    const handle = agent.start(sessionId, '开始')
+    const handle = await agent.start(sessionId, '开始')
     await firstStarted.promise
 
     const [injected] = await session.append(sessionId, [
@@ -345,7 +348,7 @@ describe('agent loop', () => {
         payload: { childSessionId: 'child-1', reason: 'done', content: '查到的资料', truncated: false },
       },
     ])
-    expect(agent.wake(sessionId, injected!.seq)).toBeUndefined()
+    expect(await agent.wake(sessionId, injected!.seq)).toBeUndefined()
     releaseFirst.resolve()
     expect(await handle.done).toBe('done')
 
@@ -383,7 +386,7 @@ describe('agent loop', () => {
     model.enqueue({ text: '处理完毕' })
     const sessionId = await session.createSession()
     const agent = makeAgent()
-    const handle = agent.start(sessionId, '开始')
+    const handle = await agent.start(sessionId, '开始')
     await toolStarted.promise
 
     const [injected] = await session.append(sessionId, [
@@ -392,7 +395,7 @@ describe('agent loop', () => {
         payload: { childSessionId: 'child-1', reason: 'done', content: '插队结果', truncated: false },
       },
     ])
-    expect(agent.wake(sessionId, injected!.seq)).toBeUndefined()
+    expect(await agent.wake(sessionId, injected!.seq)).toBeUndefined()
     releaseTool.resolve()
     expect(await handle.done).toBe('done')
 
@@ -415,7 +418,8 @@ describe('agent loop', () => {
     ])
     model.enqueue({ text: '继续完成' })
 
-    expect(await makeAgent().start(sessionId, '继续').done).toBe('done')
+    const handle = await makeAgent().start(sessionId, '继续')
+    expect(await handle.done).toBe('done')
 
     const history = await session.getHistory(sessionId)
     expect(history.map((e) => e.type)).toEqual([

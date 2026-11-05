@@ -29,7 +29,7 @@ describe('cordis 装配', () => {
     expect(ctx.tools.list().map((t) => t.name)).toEqual(['spawn', 'send_message', 'wait_subagent'])
 
     const sessionId = await ctx.session.createSession()
-    const handle = ctx.agent.start(sessionId, '打招呼')
+    const handle = await ctx.agent.start(sessionId, '打招呼')
     expect(await handle.done).toBe('done')
 
     await ctx.stop()
@@ -48,7 +48,7 @@ describe('cordis 装配', () => {
     await ctx.start()
 
     const sessionId = await ctx.session.createSession()
-    const handle = ctx.agent.start(sessionId, '安排研究任务')
+    const handle = await ctx.agent.start(sessionId, '安排研究任务')
     expect(await handle.done).toBe('done')
 
     const spawned = (await ctx.session.getHistory(sessionId)).find((e) => e.type === 'subagent_spawned')!

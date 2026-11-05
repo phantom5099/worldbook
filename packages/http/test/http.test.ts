@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { AgentService } from '@worldbook/agent'
+import { AgentService, sessionTurnIds } from '@worldbook/agent'
 import { ContextService } from '@worldbook/context'
 import { MockModelClient } from '@worldbook/model'
 import { EventSink } from '@worldbook/sink'
@@ -13,7 +13,7 @@ import type { SinkFrame } from '@worldbook/sink'
 const store = new MemoryStore()
 const session = new SessionService(store)
 const sink = new EventSink()
-const turns = new TurnRegistry()
+const turns = new TurnRegistry(sessionTurnIds(session))
 const tools = new ToolRegistry().toService()
 const model = new MockModelClient()
 const agent = new AgentService({
@@ -117,7 +117,7 @@ describe('HTTP 传输层', () => {
       body: JSON.stringify({ sessionId, input: '打招呼' }),
     })
     expect(turnRes.status).toBe(202)
-    const { turnId } = (await turnRes.json()) as { turnId: string }
+    const { turnId } = (await turnRes.json()) as { turnId: number }
     expect(turnId).toBeTruthy()
 
     const frames = await framesPromise
@@ -143,14 +143,14 @@ describe('HTTP 传输层', () => {
 
   it('会话已有活跃 turn 时 POST /turns 返回 409', async () => {
     const sessionId = await createSession()
-    const claim = turns.claim(sessionId)
+    await turns.claim(sessionId)
     const res = await fetch(`${BASE}:${server.port()}/turns`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ sessionId, input: '并发请求' }),
     })
     expect(res.status).toBe(409)
-    turns.settle(claim.turnId, 'done')
+    turns.settle(sessionId, 'done')
   })
 
   it('GET /sessions/:id/subagents 返回子代理状态，未知会话 404', async () => {

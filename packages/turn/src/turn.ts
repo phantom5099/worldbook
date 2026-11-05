@@ -1,7 +1,5 @@
-import { randomUUID } from 'node:crypto'
-
 export type SessionId = string
-export type TurnId = string
+export type TurnId = number
 
 export type TurnPhase = 'running' | 'completed' | 'failed' | 'cancelled'
 export type TurnEndReason = 'done' | 'max_steps' | 'interrupted' | 'error'
@@ -16,6 +14,11 @@ export interface TurnClaim {
   turnId: TurnId
 }
 
+/** 持久化的回合编号来源：会话没有历史回合时返回 0。 */
+export interface TurnIdSource {
+  lastTurnId(sessionId: SessionId): Promise<TurnId>
+}
+
 export class TurnAlreadyActiveError extends Error {}
 
 const PHASE_OF: Record<TurnEndReason, TurnPhase> = {
@@ -25,54 +28,35 @@ const PHASE_OF: Record<TurnEndReason, TurnPhase> = {
   error: 'failed',
 }
 
-interface TurnRecord {
-  sessionId: SessionId
-  turnId: TurnId
-  promise: Promise<TurnEndReason>
-  resolve: (reason: TurnEndReason) => void
-}
-
 export class TurnRegistry {
-  private active = new Map<TurnId, TurnRecord>()
-  private activeBySession = new Map<SessionId, TurnId>()
-  private lastBySession = new Map<SessionId, TurnSnapshot>()
+  private states = new Map<SessionId, TurnSnapshot>()
+  private claiming = new Set<SessionId>()
 
-  claim(sessionId: SessionId): TurnClaim {
-    if (this.activeBySession.has(sessionId)) {
+  constructor(private readonly ids: TurnIdSource) {}
+
+  async claim(sessionId: SessionId): Promise<TurnClaim> {
+    if (this.states.get(sessionId)?.phase === 'running' || this.claiming.has(sessionId)) {
       throw new TurnAlreadyActiveError(`session ${sessionId} already has an active turn`)
     }
-    const turnId = randomUUID()
-    let resolve!: (reason: TurnEndReason) => void
-    const promise = new Promise<TurnEndReason>((res) => {
-      resolve = res
-    })
-    this.active.set(turnId, { sessionId, turnId, promise, resolve })
-    this.activeBySession.set(sessionId, turnId)
-    return { turnId }
+    this.claiming.add(sessionId)
+    try {
+      const current = this.states.get(sessionId)
+      const lastTurnId = current !== undefined ? current.turnId : await this.ids.lastTurnId(sessionId)
+      const turnId = lastTurnId + 1
+      this.states.set(sessionId, { turnId, phase: 'running' })
+      return { turnId }
+    } finally {
+      this.claiming.delete(sessionId)
+    }
   }
 
-  settle(turnId: TurnId, reason: TurnEndReason): void {
-    const record = this.active.get(turnId)
-    if (!record) return
-    this.active.delete(turnId)
-    this.activeBySession.delete(record.sessionId)
-    this.lastBySession.set(record.sessionId, {
-      turnId,
-      phase: PHASE_OF[reason],
-      reason,
-    })
-    record.resolve(reason)
-  }
-
-  wait(turnId: TurnId): Promise<TurnEndReason> {
-    const record = this.active.get(turnId)
-    if (record) return record.promise
-    throw new Error(`unknown turn ${turnId}: settled or never claimed; capture the promise via claim before settle`)
+  settle(sessionId: SessionId, reason: TurnEndReason): void {
+    const state = this.states.get(sessionId)
+    if (state?.phase !== 'running') return
+    this.states.set(sessionId, { turnId: state.turnId, phase: PHASE_OF[reason], reason })
   }
 
   getState(sessionId: SessionId): TurnSnapshot | undefined {
-    const turnId = this.activeBySession.get(sessionId)
-    if (turnId && this.active.has(turnId)) return { turnId, phase: 'running' }
-    return this.lastBySession.get(sessionId)
+    return this.states.get(sessionId)
   }
 }

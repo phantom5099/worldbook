@@ -8,7 +8,7 @@ import { EventSink } from '@worldbook/sink'
 import { TurnRegistry } from '@worldbook/turn'
 import { ToolRegistry } from '@worldbook/tool'
 import { MockModelClient } from '@worldbook/model'
-import { AgentService } from '@worldbook/agent'
+import { AgentService, sessionTurnIds } from '@worldbook/agent'
 import { SubagentService } from '../src/index.js'
 import {
   SubagentDepthLimitError,
@@ -67,7 +67,7 @@ function setup(opts?: {
   const context = new ContextService(session)
   const model = new MockModelClient()
   const registry = new ToolRegistry()
-  const turns = new TurnRegistry()
+  const turns = new TurnRegistry(sessionTurnIds(session))
   const sink = new EventSink()
   const tools = () => registry.toService()
   const subagent = () =>
@@ -248,10 +248,10 @@ describe('subagent send', () => {
       context: new ContextService(session),
       model,
       tools: tools(),
-      turns: new TurnRegistry(),
+      turns: new TurnRegistry(sessionTurnIds(session)),
       sink: new EventSink(),
     })
-    const handle = agent.start(target, '开始工作')
+    const handle = await agent.start(target, '开始工作')
     expect(await handle.done).toBe('done')
 
     const secondRequest = model.requests[1]!
@@ -300,13 +300,13 @@ describe('subagent 状态与唤醒', () => {
   it('wait 超时返回当前状态与 timedOut', async () => {
     const { session, turns, subagent } = setup()
     const childId = await session.createSession()
-    const claim = turns.claim(childId)
+    await turns.claim(childId)
 
     await expect(subagent().wait(childId, { timeoutMs: 20 })).resolves.toEqual({
       status: 'running',
       timedOut: true,
     })
-    turns.settle(claim.turnId, 'done')
+    turns.settle(childId, 'done')
   })
 
   it('重启后从日志折叠：半截回合为 interrupted，已结束回合返回结果', async () => {

@@ -135,7 +135,7 @@ export function createHttpServer(deps: HttpDeps, opts: HttpOptions): HttpServerH
         return
       }
       try {
-        const handle = deps.agent.start(body.sessionId, body.input)
+        const handle = await deps.agent.start(body.sessionId, body.input)
         sendJson(res, 202, { turnId: handle.turnId })
       } catch (err) {
         if (err instanceof TurnAlreadyActiveError) {

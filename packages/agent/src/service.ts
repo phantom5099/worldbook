@@ -28,7 +28,7 @@ export class AgentService {
     this.loop = createLoop(deps)
   }
 
-  start(sessionId: string, input: string): TurnHandle {
+  async start(sessionId: string, input: string): Promise<TurnHandle> {
     return this.startTurn(sessionId, input)
   }
 
@@ -36,9 +36,9 @@ export class AgentService {
    * 由日志中已有事件驱动一轮（如子代理结果回注），seq 为触发事件序号。
    * 会话已有活跃 turn 时不重复开轮：挂起该唤醒，若本轮上下文始终没读到该事件，收尾后补开一轮。
    */
-  wake(sessionId: string, seq: number): TurnHandle | undefined {
+  async wake(sessionId: string, seq: number): Promise<TurnHandle | undefined> {
     try {
-      return this.startTurn(sessionId)
+      return await this.startTurn(sessionId)
     } catch (err) {
       if (err instanceof TurnAlreadyActiveError) {
         if (seq > (this.pendingWakes.get(sessionId) ?? 0)) {
@@ -50,8 +50,8 @@ export class AgentService {
     }
   }
 
-  private startTurn(sessionId: string, input?: string): TurnHandle {
-    const claim = this.deps.turns.claim(sessionId)
+  private async startTurn(sessionId: string, input?: string): Promise<TurnHandle> {
+    const claim = await this.deps.turns.claim(sessionId)
     const controller = new AbortController()
     this.deps.sink.emit(sessionId, { kind: 'transition', phase: 'running' })
     return {
@@ -77,10 +77,10 @@ export class AgentService {
       })
     } catch {
       reason = signal.aborted ? 'interrupted' : 'error'
-      this.deps.turns.settle(claim.turnId, reason)
+      this.deps.turns.settle(sessionId, reason)
     }
     this.deps.sink.emit(sessionId, { kind: 'transition', phase: PHASE_OF[reason], reason })
-    this.replayWake(sessionId)
+    await this.replayWake(sessionId)
     return reason
   }
 
@@ -91,10 +91,10 @@ export class AgentService {
   }
 
   /** 收尾后补开一轮，处理本轮没读到的唤醒；若会话已被别人 claim 则由那一轮读取。 */
-  private replayWake(sessionId: string): void {
+  private async replayWake(sessionId: string): Promise<void> {
     if (!this.pendingWakes.delete(sessionId)) return
     try {
-      this.startTurn(sessionId)
+      await this.startTurn(sessionId)
     } catch (err) {
       if (!(err instanceof TurnAlreadyActiveError)) throw err
     }

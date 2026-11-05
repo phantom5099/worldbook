@@ -12,7 +12,7 @@ import { ToolRegistry } from '@worldbook/tool'
 import type { ToolService } from '@worldbook/tool'
 import { OpenAICompatClient } from '@worldbook/model'
 import type { ModelClient } from '@worldbook/model'
-import { AgentService } from '@worldbook/agent'
+import { AgentService, sessionTurnIds } from '@worldbook/agent'
 import { SubagentService } from '@worldbook/subagent'
 import { createHttpServer } from '@worldbook/http'
 import type { HttpOptions, HttpServerHandle } from '@worldbook/http'
@@ -132,7 +132,7 @@ const assemble: Plugin.Object<Context, AppConfig> = {
     const context = new ContextService(session)
     const model = config.modelClient ?? new OpenAICompatClient(config.model)
     const tools = registry.toService()
-    const turns = new TurnRegistry()
+    const turns = new TurnRegistry(sessionTurnIds(session))
     const sink = new EventSink()
     const agent = new AgentService({
       session,
@@ -155,7 +155,7 @@ const assemble: Plugin.Object<Context, AppConfig> = {
         ? {}
         : {
             wake: (sessionId: string, seq: number) => {
-              agent.wake(sessionId, seq)
+              void agent.wake(sessionId, seq)
             },
           }),
     })

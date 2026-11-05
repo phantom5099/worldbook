@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 export interface ToolRunContext {
   sessionId: string
-  turnId: string
+  turnId: number
   signal: AbortSignal
 }
 

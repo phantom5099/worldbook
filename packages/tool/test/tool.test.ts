@@ -10,7 +10,7 @@ const echo = {
 }
 
 function makeCtx(signal = new AbortController().signal) {
-  return { sessionId: 's1', turnId: 't1', signal }
+  return { sessionId: 's1', turnId: 1, signal }
 }
 
 describe('ToolRegistry 装配期', () => {

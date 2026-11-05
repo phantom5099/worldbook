@@ -4,7 +4,7 @@ import type { ToolCall } from '@worldbook/tool'
 import type { ToolService } from '@worldbook/tool'
 import type { SessionService, SessionEvent, SessionEventType } from '@worldbook/session'
 import type { EventSink } from '@worldbook/sink'
-import type { TurnRegistry, TurnClaim, TurnEndReason } from '@worldbook/turn'
+import type { TurnRegistry, TurnClaim, TurnEndReason, TurnId } from '@worldbook/turn'
 
 export type { TurnEndReason }
 
@@ -68,7 +68,7 @@ export function createLoop(deps: LoopDeps) {
       } catch {
         // turn_ended 落库失败不阻塞 settle：状态机终态必须到达
       }
-      deps.turns.settle(claim.turnId, reason)
+      deps.turns.settle(sessionId, reason)
       return reason
     }
 
@@ -85,7 +85,7 @@ export function createLoop(deps: LoopDeps) {
 
     try {
       await repairDanglingTurn()
-      await emitEvent('turn_started', {})
+      await emitEvent('turn_started', { turnId: claim.turnId })
       if (input !== undefined) await emitEvent('user_message', { text: input })
 
       let reason: TurnEndReason | undefined
@@ -113,7 +113,7 @@ export function createLoop(deps: LoopDeps) {
   /** 返回非 undefined 表示循环结束（done 或 interrupted）。 */
   async function runStep(
     sessionId: string,
-    turnId: string,
+    turnId: TurnId,
     signal: AbortSignal,
     emitEvent: (type: SessionEventType, payload: unknown) => Promise<SessionEvent>,
     onContextRead?: (lastSeq: number) => void,

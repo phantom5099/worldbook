@@ -4,9 +4,10 @@ turn/step 两级 ReAct 循环与对外入口。源码 `src/`：`loop.ts`（LoopF
 
 ## 结构
 
-- `createLoop(deps)` → `{ runTurn(sessionId, {claim, signal, input?, onContextRead?}) }`：**不自己 claim**——调用方先 `TurnRegistry.claim` 拿到 claim，loop 收尾时负责 `settle`。缺省 `input` 时不写 `user_message`，由日志中已有事件（如 `subagent_result`）驱动本轮；`turn_started` 前先修复日志中未闭合的孤儿 turn。每步读取上下文后通过 `onContextRead(lastSeq)` 报告快照覆盖的事件序号。
-- `AgentService.start(sessionId, input)` → `TurnHandle {turnId, done, interrupt}`：同步 claim、发 `transition:running` 帧、后台跑 loop；`interrupt()` 走 AbortController，不进状态机。
-- `AgentService.wake(sessionId, seq)` → `TurnHandle | undefined`：由 seq 对应的事件驱动一轮、不写输入。会话已有活跃 turn 时返回 `undefined`，并把唤醒挂起：该 turn 后续读取的上下文若始终没覆盖到 seq，收尾后自动补开一轮；已被下一步读到则丢弃，不产生多余回合。
+- `createLoop(deps)` → `{ runTurn(sessionId, {claim, signal, input?, onContextRead?}) }`：**不自己 claim**——调用方先 `TurnRegistry.claim` 拿到 claim，loop 收尾时负责 `settle(sessionId, reason)`。缺省 `input` 时不写 `user_message`，由日志中已有事件（如 `subagent_result`）驱动本轮；`turn_started` 前先修复日志中未闭合的孤儿 turn，并把 `claim.turnId` 写入 `turn_started` 载荷。每步读取上下文后通过 `onContextRead(lastSeq)` 报告快照覆盖的事件序号。
+- `sessionTurnIds(session)`：`TurnIdSource` 实现，从会话日志最后一个带数字 `turnId` 的 `turn_started` 恢复回合编号；装配层用它构造 `TurnRegistry`，使重启后的编号续接而非重置。
+- `AgentService.start(sessionId, input)` → `Promise<TurnHandle {turnId, done, interrupt}>`：异步 claim、发 `transition:running` 帧、后台跑 loop；`interrupt()` 走 AbortController，不进状态机。
+- `AgentService.wake(sessionId, seq)` → `Promise<TurnHandle | undefined>`：由 seq 对应的事件驱动一轮、不写输入。会话已有活跃 turn 时返回 `undefined`，并把唤醒挂起：该 turn 后续读取的上下文若始终没覆盖到 seq，收尾后自动补开一轮；已被下一步读到则丢弃，不产生多余回合。
 - `done` promise：resolve 为 `TurnEndReason`（done/max_steps/interrupted/error），并在 settle 后补发终态 `transition` 帧。
 
 ## 单 step 流程
@@ -15,7 +16,7 @@ getContextSnapshot（全量投影，回报快照覆盖的 seq）→ completeStre
 
 ## 不变量与边界
 
-- **claim 在调用方，settle 在 loop**：loop 任何退出路径（含异常）都到达 settle；`turn_ended` 落库失败也不阻塞 settle（终态必须到达）。
+- **claim 在调用方，settle 在 loop**：claim 为异步（读取持久化回合编号），loop 任何退出路径（含异常）都到达 `settle(sessionId, reason)`；`turn_ended` 落库失败也不阻塞 settle（终态必须到达）。
 - `max_steps`（默认 16）只在步数耗尽且最后一步仍要工具时返回；最后一步自然出文本则 `done`。
 - 错误回合：模型/落库抛错 → `error` + 错误信息写入 turn_ended payload；signal 已中止时一律归为 `interrupted`。
 - 子代理结果回灌：不需要显式注入——context 每步全量重投影，`subagent_result`/`subagent_message` 事件自然进入下一轮上下文。
