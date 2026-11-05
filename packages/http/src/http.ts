@@ -6,7 +6,7 @@ import type { SessionMeta, SessionService } from '@worldbook/session'
 import type { EventSink } from '@worldbook/sink'
 import type { SubagentService } from '@worldbook/subagent'
 
-export interface HttpDeps {
+interface HttpDeps {
   session: SessionService
   sink: EventSink
   agent: AgentService
@@ -54,17 +54,19 @@ function sseWrite(res: ServerResponse, frame: unknown): void {
   res.write(`data: ${JSON.stringify(frame)}\n\n`)
 }
 
+async function ensureSession(deps: HttpDeps, sessionId: string, res: ServerResponse): Promise<boolean> {
+  if (await deps.session.getSession(sessionId)) return true
+  sendJson(res, 404, { error: `session ${sessionId} not found` })
+  return false
+}
+
 async function streamSession(
   deps: HttpDeps,
   sessionId: string,
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
-  const row = await deps.session.getSession(sessionId)
-  if (!row) {
-    sendJson(res, 404, { error: `session ${sessionId} not found` })
-    return
-  }
+  if (!(await ensureSession(deps, sessionId, res))) return
   res.writeHead(200, {
     'content-type': 'text/event-stream; charset=utf-8',
     'cache-control': 'no-cache',
@@ -154,11 +156,7 @@ export function createHttpServer(deps: HttpDeps, opts: HttpOptions): HttpServerH
 
     if (req.method === 'GET' && sessionMatch?.[1] && sessionMatch[2] === '/history') {
       const sessionId = sessionMatch[1]
-      const row = await deps.session.getSession(sessionId)
-      if (!row) {
-        sendJson(res, 404, { error: `session ${sessionId} not found` })
-        return
-      }
+      if (!(await ensureSession(deps, sessionId, res))) return
       const events = await deps.session.getHistory(sessionId)
       sendJson(res, 200, { sessionId, events })
       return
@@ -166,11 +164,7 @@ export function createHttpServer(deps: HttpDeps, opts: HttpOptions): HttpServerH
 
     if (req.method === 'GET' && sessionMatch?.[1] && sessionMatch[2] === '/subagents') {
       const sessionId = sessionMatch[1]
-      const row = await deps.session.getSession(sessionId)
-      if (!row) {
-        sendJson(res, 404, { error: `session ${sessionId} not found` })
-        return
-      }
+      if (!(await ensureSession(deps, sessionId, res))) return
       const subagents = await deps.subagent.listChildren(sessionId)
       sendJson(res, 200, { sessionId, subagents })
       return

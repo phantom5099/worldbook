@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto'
-import type { SessionRow, SessionStatus, SessionStore, StoredEvent } from '../src/store.js'
+import type { SessionEvent } from '../src/types.js'
+import type { SessionRow, SessionStatus, SessionStore } from '../src/store.js'
 
 export class MemoryStore implements SessionStore {
   sessions = new Map<string, SessionRow>()
-  events = new Map<string, StoredEvent[]>()
+  events = new Map<string, SessionEvent[]>()
 
   async createSession(meta: { parentId?: string; depth?: number }): Promise<string> {
     const id = randomUUID()
@@ -17,7 +18,7 @@ export class MemoryStore implements SessionStore {
     return id
   }
 
-  async insertEvents(sessionId: string, events: ReadonlyArray<StoredEvent>): Promise<void> {
+  async insertEvents(sessionId: string, events: ReadonlyArray<SessionEvent>): Promise<void> {
     const list = this.events.get(sessionId) ?? []
     list.push(...events)
     this.events.set(sessionId, list)

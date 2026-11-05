@@ -4,7 +4,7 @@
 
 ## 职责
 
-会话级有序帧队列的多播：SSE 消费入口 `attach`，生产方 `emit`，停机 `close`。
+会话级有序帧队列的多播：SSE 消费入口 `attach`，生产方 `emit`，停机 `close`。`appendAndEmit(session, sink, sessionId, type, payload)` 供生产方统一"先落库再播发 event 帧"，agent loop 与 subagent 共用。
 
 ## 帧类型（SinkFrame）
 

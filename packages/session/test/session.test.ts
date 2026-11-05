@@ -1,51 +1,23 @@
 import { describe, expect, it, vi } from 'vitest'
 import { SessionService } from '../src/index.js'
-import type { SessionEvent, SessionEventType, SessionId, SessionMeta } from '../src/types.js'
-import type { SessionRow, SessionStatus, SessionStore, StoredEvent } from '../src/store.js'
+import { MemoryStore } from '../testing/memory-store.js'
+import type { SessionEvent, SessionEventType, SessionId } from '../src/types.js'
 
-class FakeStore implements SessionStore {
-  events = new Map<SessionId, StoredEvent[]>()
-  status = new Map<SessionId, SessionStatus>()
-  nextId = 1
+class FakeStore extends MemoryStore {
   failNextInsert: Error | null = null
   insertCalls = 0
 
-  async createSession(meta: SessionMeta): Promise<SessionId> {
-    const id = `s-${this.nextId++}`
-    this.status.set(id, 'active')
-    this.events.set(id, [])
-    void meta
-    return id
-  }
-
-  async insertEvents(sessionId: SessionId, events: ReadonlyArray<StoredEvent>): Promise<void> {
+  override async insertEvents(
+    sessionId: SessionId,
+    events: ReadonlyArray<SessionEvent>,
+  ): Promise<void> {
     this.insertCalls++
     if (this.failNextInsert) {
       const error = this.failNextInsert
       this.failNextInsert = null
       throw error
     }
-    this.events.get(sessionId)!.push(...events)
-  }
-
-  async selectEvents(sessionId: SessionId, afterSeq: number, limit?: number): Promise<SessionEvent[]> {
-    let rows = (this.events.get(sessionId) ?? []).filter((event) => event.seq > afterSeq)
-    if (limit !== undefined) rows = rows.slice(0, limit)
-    return rows.map((event) => ({ ...event }))
-  }
-
-  async maxSeq(sessionId: SessionId): Promise<number> {
-    const rows = this.events.get(sessionId) ?? []
-    return rows.length === 0 ? 0 : rows[rows.length - 1]!.seq
-  }
-
-  async getSession(sessionId: SessionId): Promise<SessionRow | undefined> {
-    if (!this.status.has(sessionId)) return undefined
-    return { id: sessionId, parentId: null, depth: 0, status: this.status.get(sessionId)!, meta: {} }
-  }
-
-  async setStatus(sessionId: SessionId, status: SessionStatus): Promise<void> {
-    this.status.set(sessionId, status)
+    await super.insertEvents(sessionId, events)
   }
 }
 

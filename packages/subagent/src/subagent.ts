@@ -4,38 +4,39 @@ import type { ModelClient } from '@worldbook/model'
 import type { ToolService } from '@worldbook/tool'
 import type { SessionService, SessionEvent, SessionEventType } from '@worldbook/session'
 import type { EventSink } from '@worldbook/sink'
+import { appendAndEmit } from '@worldbook/sink'
 import { foldTurnState } from '@worldbook/turn'
 import type { FoldedTurnState, TurnEndReason, TurnRegistry } from '@worldbook/turn'
 
-export interface SubagentSpec {
+interface SubagentSpec {
   systemPrompt: string
   task: string
   maxSteps?: number
 }
 
-export interface SubagentResult {
+interface SubagentResult {
   childSessionId: string
   reason: TurnEndReason
   content: string
 }
 
-export interface SubagentSnapshot extends FoldedTurnState {
+interface SubagentSnapshot extends FoldedTurnState {
   result?: SubagentResult
 }
 
-export interface SubagentWaitResult extends SubagentSnapshot {
+interface SubagentWaitResult extends SubagentSnapshot {
   timedOut?: boolean
 }
 
-export interface SubagentInfo extends SubagentSnapshot {
+interface SubagentInfo extends SubagentSnapshot {
   childSessionId: string
 }
 
-export interface SubagentWaitOptions {
+interface SubagentWaitOptions {
   timeoutMs?: number
 }
 
-export interface SubagentSendOptions {
+interface SubagentSendOptions {
   /** 默认空闲目标会被唤醒开新一轮；false 时仅入队。 */
   wake?: boolean
 }
@@ -47,7 +48,7 @@ export class SubagentSendScopeError extends Error {}
 const DEFAULT_MAX_DEPTH = 2
 const DEFAULT_WAIT_TIMEOUT_MS = 30_000
 
-export interface SubagentDeps {
+interface SubagentDeps {
   session: SessionService
   sink: EventSink
   turns: TurnRegistry
@@ -67,15 +68,8 @@ export class SubagentService {
     this.maxDepth = deps.maxDepth ?? DEFAULT_MAX_DEPTH
   }
 
-  private async appendAndEmit(sessionId: string, type: SessionEventType, payload: unknown): Promise<SessionEvent> {
-    const [event] = await this.deps.session.append(sessionId, [{ type, payload }])
-    this.deps.sink.emit(sessionId, {
-      kind: 'event',
-      seq: event!.seq,
-      type: event!.type,
-      payload: event!.payload,
-    })
-    return event!
+  private appendAndEmit(sessionId: string, type: SessionEventType, payload: unknown): Promise<SessionEvent> {
+    return appendAndEmit(this.deps.session, this.deps.sink, sessionId, type, payload)
   }
 
   /** spawn 立即返回子会话 id；子 loop 在后台执行，结果经 subagent_result 事件回注父会话。 */

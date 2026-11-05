@@ -1,19 +1,12 @@
 import { createLoop } from './loop.js'
 import type { LoopDeps, TurnEndReason } from './loop.js'
-import type { TurnClaim, TurnId, TurnPhase } from '@worldbook/turn'
-import { TurnAlreadyActiveError } from '@worldbook/turn'
+import type { TurnClaim, TurnId } from '@worldbook/turn'
+import { phaseOf, TurnAlreadyActiveError } from '@worldbook/turn'
 
 export { TurnAlreadyActiveError }
 export type { TurnEndReason, LoopDeps }
 
-const PHASE_OF: Record<TurnEndReason, TurnPhase> = {
-  done: 'completed',
-  max_steps: 'completed',
-  interrupted: 'cancelled',
-  error: 'failed',
-}
-
-export interface TurnHandle {
+interface TurnHandle {
   turnId: TurnId
   done: Promise<TurnEndReason>
   interrupt(reason?: string): void
@@ -79,7 +72,7 @@ export class AgentService {
       reason = signal.aborted ? 'interrupted' : 'error'
       this.deps.turns.settle(sessionId, reason)
     }
-    this.deps.sink.emit(sessionId, { kind: 'transition', phase: PHASE_OF[reason], reason })
+    this.deps.sink.emit(sessionId, { kind: 'transition', phase: phaseOf(reason), reason })
     await this.replayWake(sessionId)
     return reason
   }

@@ -59,7 +59,7 @@ interface AccumulatedToolCall {
   arguments: string
 }
 
-export interface OpenAiClientOptions {
+interface OpenAiClientOptions {
   baseUrl: string
   apiKey: string
   model: string

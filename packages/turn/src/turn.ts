@@ -4,7 +4,7 @@ export type TurnId = number
 export type TurnPhase = 'running' | 'completed' | 'failed' | 'cancelled'
 export type TurnEndReason = 'done' | 'max_steps' | 'interrupted' | 'error'
 
-export interface TurnSnapshot {
+interface TurnSnapshot {
   turnId: TurnId
   phase: TurnPhase
   reason?: TurnEndReason
@@ -33,7 +33,7 @@ export function phaseOf(reason: TurnEndReason): TurnPhase {
 }
 
 /** 折叠所需的事件字段；结构兼容 SessionEvent，避免 turn 依赖 session 包。 */
-export interface TurnEventView {
+interface TurnEventView {
   type: string
   payload?: unknown
 }

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-export interface ToolRunContext {
+interface ToolRunContext {
   sessionId: string
   turnId: number
   signal: AbortSignal
@@ -12,7 +12,7 @@ export interface ToolCall {
   args: unknown
 }
 
-export type ToolCallStatus = 'ok' | 'error'
+type ToolCallStatus = 'ok' | 'error'
 
 export interface ToolCallResult {
   callId: string
@@ -21,12 +21,12 @@ export interface ToolCallResult {
   result: string
 }
 
-export interface ToolResult<R = unknown> {
+interface ToolResult<R = unknown> {
   result: R
   display?: string
 }
 
-export interface ToolDefinition<A = unknown, R = unknown> {
+interface ToolDefinition<A = unknown, R = unknown> {
   name: string
   description: string
   parameters: z.ZodType<A>

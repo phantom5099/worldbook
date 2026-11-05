@@ -1,6 +1,6 @@
 export type ProviderPresetName = 'deepseek' | 'gpt' | 'glm'
 
-export interface ProviderPreset {
+interface ProviderPreset {
   baseUrl: string
   defaultModel: string
   apiKeyEnv: string

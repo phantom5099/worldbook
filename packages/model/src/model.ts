@@ -36,7 +36,7 @@ export interface ModelClient {
   completeStream(request: ModelRequest): AsyncIterable<ModelEvent>
 }
 
-export interface MockResponse {
+interface MockResponse {
   text?: string
   toolCalls?: ModelToolCall[]
   usage?: ModelUsage

@@ -1,6 +1,6 @@
 import type { Sql } from 'postgres'
 import type { SessionEvent, SessionEventType, SessionId, SessionMeta } from './types.js'
-import type { SessionRow, SessionStatus, SessionStore, StoredEvent } from './store.js'
+import type { SessionRow, SessionStatus, SessionStore } from './store.js'
 
 export class PostgresSessionStore implements SessionStore {
   constructor(private readonly sql: Sql) {}
@@ -16,7 +16,7 @@ export class PostgresSessionStore implements SessionStore {
     return rows[0]!.id
   }
 
-  async insertEvents(sessionId: SessionId, events: ReadonlyArray<StoredEvent>): Promise<void> {
+  async insertEvents(sessionId: SessionId, events: ReadonlyArray<SessionEvent>): Promise<void> {
     const rows = events.map((event) => ({
       session_id: sessionId,
       seq: event.seq,

@@ -1,8 +1,8 @@
 import { Context, Service } from '@cordisjs/core'
 import type { Plugin } from '@cordisjs/core'
-import postgres from 'postgres'
 import { z } from 'zod'
-import { ensureSchema } from '@worldbook/db'
+import { DbService as PostgresDb, ensureSchema } from '@worldbook/db'
+import type { Sql } from '@worldbook/db'
 import { PostgresSessionStore, SessionService } from '@worldbook/session'
 import type { SessionStore } from '@worldbook/session'
 import { ContextService } from '@worldbook/context'
@@ -35,19 +35,21 @@ declare module '@cordisjs/core' {
 
 export class DbService extends Service<{ url: string }> {
   static [Service.provide] = 'db'
-  sql!: postgres.Sql
+  sql!: Sql
+  private database!: PostgresDb
 
   constructor(ctx: Context, config: { url: string }) {
     super(ctx, config)
   }
 
   protected override async start() {
-    this.sql = postgres(this.config.url)
+    this.database = new PostgresDb(this.config.url)
+    this.sql = this.database.sql
     await ensureSchema(this.sql)
   }
 
   protected override async stop() {
-    await this.sql.end({ timeout: 5 })
+    await this.database.close()
   }
 }
 

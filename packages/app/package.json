@@ -17,7 +17,6 @@
     "@worldbook/subagent": "workspace:*",
     "@worldbook/tool": "workspace:*",
     "@worldbook/turn": "workspace:*",
-    "postgres": "^4.0.0",
     "zod": "^4.6.7"
   }
 }

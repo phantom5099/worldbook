@@ -12,7 +12,7 @@ export interface Migration {
 export const MIGRATIONS: readonly Migration[] = [{ version: '001_init', file: '001_init.sql' }]
 
 export async function ensureSchema(sql: Sql): Promise<void> {
-  await sql.file(`${MIGRATIONS_DIR}001_init.sql`)
+  await sql.file(`${MIGRATIONS_DIR}${MIGRATIONS[0]!.file}`)
 }
 
 export async function runMigrations(url: string): Promise<string[]> {

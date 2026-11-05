@@ -1,5 +1,5 @@
 import type { TurnEndReason, TurnPhase } from '@worldbook/turn'
-import type { SessionEventType, SessionId } from '@worldbook/session'
+import type { OutgoingEvent, SessionEvent, SessionEventType, SessionId } from '@worldbook/session'
 
 export type SinkFrame =
   | { kind: 'transition'; phase: TurnPhase; reason?: TurnEndReason }
@@ -77,4 +77,21 @@ export class EventSink {
     set.delete(queue)
     if (set.size === 0) this.consumers.delete(sessionId)
   }
+}
+
+interface EventAppender {
+  append(sessionId: SessionId, events: readonly OutgoingEvent[]): Promise<SessionEvent[]>
+}
+
+/** 先落库再播发 event 帧：event 帧只在 append 成功后产生。 */
+export async function appendAndEmit(
+  session: EventAppender,
+  sink: EventSink,
+  sessionId: SessionId,
+  type: SessionEventType,
+  payload: unknown,
+): Promise<SessionEvent> {
+  const [event] = await session.append(sessionId, [{ type, payload }])
+  sink.emit(sessionId, { kind: 'event', seq: event!.seq, type: event!.type, payload: event!.payload })
+  return event!
 }

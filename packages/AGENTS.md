@@ -15,6 +15,7 @@ pnpm workspace 根在仓库根（`pnpm-workspace.yaml` → `packages/*`）。每
 - 测试：vitest，位于各包 `<module>/test/*.test.ts`，与 `src/` 同级；测试规则见下「测试规则」。
 - 命令在仓库根执行：`pnpm test`、`pnpm typecheck`。
 - 依赖声明规则：跨包导入写进该包 `dependencies`（仅测试用的写 `devDependencies`），由 pnpm workspace `workspace:*` 链接。
+- 导出规则：不增加没有使用者的 `export`。仅供本文件或本包内部使用的声明不加 `export`；只有被其他文件引用的符号才出现在包入口 `index.ts` 的导出面上。
 
 ## 测试规则
 
@@ -78,7 +79,7 @@ http ← subagent（子代理状态端点）
 | 改 loop 循环 / 步进逻辑 | `packages/agent/src/loop.ts` |
 | 改 Agent 对外入口 | `packages/agent/src/service.ts` |
 | 改事件类型 / SSE 帧结构 | `packages/session/src/types.ts` |
-| 改事件存储（内存/PG） | `packages/session/src/store.ts`、`pg-store.ts`、`memory-store.ts` |
+| 改事件存储（内存/PG） | `packages/session/src/store.ts`、`pg-store.ts`、`packages/session/testing/memory-store.ts` |
 | 改 turn 状态机（互斥/终态） | `packages/turn/src/turn.ts` |
 | 改流式帧队列 | `packages/sink/src/sink.ts` |
 | 改 LLM 调用 / SDK 适配 | `packages/model/src/openai.ts` |

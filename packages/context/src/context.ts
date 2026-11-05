@@ -6,13 +6,13 @@ export interface AssistantToolCall {
   args: unknown
 }
 
-export type LlmMessage =
+type LlmMessage =
   | { role: 'system'; content: string }
   | { role: 'user'; content: string }
   | { role: 'assistant'; content: string; toolCalls?: AssistantToolCall[] }
   | { role: 'tool'; toolCallId: string; content: string }
 
-export interface ContextOptions {
+interface ContextOptions {
   system?: string
 }
 

@@ -1,9 +1,10 @@
 import type { ContextSnapshot } from '@worldbook/context'
-import type { ModelClient } from '@worldbook/model'
+import type { ModelClient, ModelUsage } from '@worldbook/model'
 import type { ToolCall } from '@worldbook/tool'
 import type { ToolService } from '@worldbook/tool'
 import type { SessionService, SessionEvent, SessionEventType } from '@worldbook/session'
 import type { EventSink } from '@worldbook/sink'
+import { appendAndEmit } from '@worldbook/sink'
 import type { TurnRegistry, TurnClaim, TurnEndReason, TurnId } from '@worldbook/turn'
 
 export type { TurnEndReason }
@@ -23,7 +24,7 @@ export interface LoopDeps {
   maxSteps?: number
 }
 
-export interface RunTurnOptions {
+interface RunTurnOptions {
   claim: TurnClaim
   signal: AbortSignal
   /** 缺省时不写 user_message：由日志中已有事件（如 subagent_result）驱动本轮。 */
@@ -32,7 +33,7 @@ export interface RunTurnOptions {
   onContextRead?: (lastSeq: number) => void
 }
 
-export interface TurnEndedPayload {
+interface TurnEndedPayload {
   reason: TurnEndReason
   error?: string
   steps: number
@@ -47,16 +48,8 @@ export function createLoop(deps: LoopDeps) {
     const { claim, signal, input } = opts
     let steps = 0
 
-    async function emitEvent(type: SessionEventType, payload: unknown): Promise<SessionEvent> {
-      const [event] = await deps.session.append(sessionId, [{ type, payload }])
-      deps.sink.emit(sessionId, {
-        kind: 'event',
-        seq: event!.seq,
-        type: event!.type,
-        payload: event!.payload,
-      })
-      return event!
-    }
+    const emitEvent = (type: SessionEventType, payload: unknown): Promise<SessionEvent> =>
+      appendAndEmit(deps.session, deps.sink, sessionId, type, payload)
 
     async function finish(reason: TurnEndReason, error?: string): Promise<TurnEndReason> {
       try {
@@ -125,7 +118,7 @@ export function createLoop(deps: LoopDeps) {
 
     let text = ''
     const calls: ToolCall[] = []
-    let usage: { inputTokens?: number; outputTokens?: number } | undefined
+    let usage: ModelUsage | undefined
 
     for await (const ev of deps.model.completeStream({ messages, tools: toolSpecs, signal })) {
       if (ev.type === 'delta') {
