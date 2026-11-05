@@ -60,6 +60,8 @@ export interface AppConfig {
   maxSteps?: number
   /** 配置后 startApp 启动 HTTP+SSE 传输层；缺省不启动（纯装配/测试用） */
   http?: HttpOptions
+  /** 子代理结果/消息到达时是否唤醒空闲会话（默认 true） */
+  wakeOnResult?: boolean
   /** 装配期工具注册；子代理工具经 registerSubagentTools 注册，resolve 延迟到执行期 */
   registerTools?: (registry: ToolRegistry, resolve: () => SubagentService) => void
 }
@@ -69,7 +71,7 @@ export function registerSubagentTools(registry: ToolRegistry, resolve: () => Sub
   registry.set({
     name: 'spawn',
     description:
-      '启动一个子智能体执行任务（异步，立即返回子会话 id）。完成后其结果会自动回注到当前会话。传 sessionId 可复用既有子代理会话续跑。',
+      '启动一个子智能体执行任务（异步，立即返回子会话 id）。完成后结果自动回注到当前会话，空闲时会被唤醒处理。传 sessionId 可复用既有子代理会话续跑。',
     parameters: z.object({
       task: z.string().describe('交给子智能体的任务描述'),
       systemPrompt: z.string().describe('子智能体的系统提示词'),
@@ -87,7 +89,7 @@ export function registerSubagentTools(registry: ToolRegistry, resolve: () => Sub
 
   registry.set({
     name: 'send_message',
-    description: '向同一根会话下的其他智能体投递消息（对方在自己的下一步吸收，空闲不唤醒）。',
+    description: '向同一根会话下的其他智能体投递消息；目标运行中在下一步吸收，空闲时会被唤醒。',
     parameters: z.object({
       to: z.string().describe('目标会话 id'),
       content: z.string().describe('消息内容'),
@@ -100,12 +102,13 @@ export function registerSubagentTools(registry: ToolRegistry, resolve: () => Sub
 
   registry.set({
     name: 'wait_subagent',
-    description: '阻塞等待指定子智能体结束，返回其结果。',
+    description: '等待指定子智能体结束；超时返回当前状态（timedOut）。',
     parameters: z.object({
       sessionId: z.string().describe('spawn 返回的子会话 id'),
+      timeoutMs: z.number().int().positive().optional().describe('超时毫秒数，默认 30000'),
     }),
-    execute: async (args: { sessionId: string }) => {
-      const result = await resolve().wait(args.sessionId)
+    execute: async (args: { sessionId: string; timeoutMs?: number }) => {
+      const result = await resolve().wait(args.sessionId, { timeoutMs: args.timeoutMs })
       return { result }
     },
   })
@@ -141,7 +144,21 @@ const assemble: Plugin.Object<Context, AppConfig> = {
       system: config.system,
       maxSteps: config.maxSteps,
     })
-    const subagent = new SubagentService({ session, sink, turns, context, model, tools })
+    const subagent = new SubagentService({
+      session,
+      sink,
+      turns,
+      context,
+      model,
+      tools,
+      ...(config.wakeOnResult === false
+        ? {}
+        : {
+            wake: (sessionId: string, seq: number) => {
+              agent.wake(sessionId, seq)
+            },
+          }),
+    })
 
     ctx.set('session', session)
     ctx.set('context', context)
@@ -169,7 +186,7 @@ export async function startApp(config: AppConfig): Promise<Context> {
   await ctx.start()
   if (config.http) {
     const http = createHttpServer(
-      { session: ctx.session, sink: ctx.sink, agent: ctx.agent },
+      { session: ctx.session, sink: ctx.sink, agent: ctx.agent, subagent: ctx.subagent },
       config.http,
     )
     await http.start()

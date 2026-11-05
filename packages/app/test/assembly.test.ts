@@ -51,13 +51,16 @@ describe('cordis 装配', () => {
     const handle = ctx.agent.start(sessionId, '安排研究任务')
     expect(await handle.done).toBe('done')
 
+    const spawned = (await ctx.session.getHistory(sessionId)).find((e) => e.type === 'subagent_spawned')!
+    const childId = (spawned.payload as { childSessionId: string }).childSessionId
+    // 子 loop 在后台执行：等结果回注后再断言父会话历史
+    await ctx.subagent.wait(childId)
+
     const history = await ctx.session.getHistory(sessionId)
     const types = history.map((e) => e.type)
     expect(types).toContain('subagent_spawned')
     expect(types).toContain('subagent_result')
 
-    const spawned = history.find((e) => e.type === 'subagent_spawned')!
-    const childId = (spawned.payload as { childSessionId: string }).childSessionId
     const childRow = await ctx.session.getSession(childId)
     expect(childRow).toMatchObject({ parentId: sessionId, depth: 1 })
 

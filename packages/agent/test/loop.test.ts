@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { SessionService } from '@worldbook/session'
 import type { SessionRow, SessionStatus, SessionStore, StoredEvent } from '@worldbook/session'
@@ -284,8 +284,163 @@ describe('agent loop', () => {
     const ended = history[history.length - 1]!
     expect(ended.payload).toMatchObject({ reason: 'error', error: 'boom' })
   })
+
+  it('wake：不写 user_message，由日志中已有的子代理结果驱动回合', async () => {
+    const { session, model, makeAgent } = setup()
+    const sessionId = await session.createSession()
+    const [injected] = await session.append(sessionId, [
+      {
+        type: 'subagent_result',
+        payload: { childSessionId: 'child-1', reason: 'done', content: '查到的资料', truncated: false },
+      },
+    ])
+    model.enqueue({ text: '已汇总' })
+
+    const agent = makeAgent()
+    const handle = agent.wake(sessionId, injected!.seq)!
+    expect(await handle.done).toBe('done')
+
+    const history = await session.getHistory(sessionId)
+    expect(history.filter((e) => e.type === 'user_message')).toHaveLength(0)
+    expect(history[history.length - 1]!.payload).toMatchObject({ reason: 'done' })
+    const firstMessage = model.requests[0]!.messages[0]!
+    expect(firstMessage.role).toBe('user')
+    expect(firstMessage.content).toContain('查到的资料')
+  })
+
+  it('活跃回合未读到的唤醒会在收尾后补开一轮', async () => {
+    const { session, turns, sink } = setup()
+    const requests: ModelRequest[] = []
+    let calls = 0
+    const firstStarted = deferred()
+    const releaseFirst = deferred()
+    const gated: ModelClientLike = {
+      async *completeStream(request: ModelRequest): AsyncIterable<ModelEvent> {
+        requests.push(request)
+        calls += 1
+        if (calls === 1) {
+          firstStarted.resolve()
+          await releaseFirst.promise
+          yield { type: 'message', text: '第一轮', toolCalls: [] }
+          return
+        }
+        yield { type: 'message', text: '处理结果', toolCalls: [] }
+      },
+    }
+    const agent = new AgentService({
+      session,
+      context: new ContextService(session),
+      model: gated,
+      tools: new ToolRegistry().toService(),
+      turns,
+      sink,
+    })
+    const sessionId = await session.createSession()
+    const handle = agent.start(sessionId, '开始')
+    await firstStarted.promise
+
+    const [injected] = await session.append(sessionId, [
+      {
+        type: 'subagent_result',
+        payload: { childSessionId: 'child-1', reason: 'done', content: '查到的资料', truncated: false },
+      },
+    ])
+    expect(agent.wake(sessionId, injected!.seq)).toBeUndefined()
+    releaseFirst.resolve()
+    expect(await handle.done).toBe('done')
+
+    await vi.waitFor(() => {
+      expect(calls).toBe(2)
+      expect(turns.getState(sessionId)?.phase).toBe('completed')
+    })
+
+    const history = await session.getHistory(sessionId)
+    const types = history.map((e) => e.type)
+    expect(types.filter((t) => t === 'turn_started')).toHaveLength(2)
+    const tail = history.slice(types.lastIndexOf('turn_started'))
+    expect(tail.some((e) => e.type === 'user_message')).toBe(false)
+    expect(requests[1]!.messages).toContainEqual({
+      role: 'user',
+      content: expect.stringContaining('查到的资料'),
+    })
+  })
+
+  it('活跃回合已在下一步读到的事件不会补开新轮', async () => {
+    const { session, model, registry, turns, makeAgent } = setup()
+    const toolStarted = deferred()
+    const releaseTool = deferred()
+    registry.set({
+      name: 'slow',
+      description: '慢工具',
+      parameters: z.object({}),
+      execute: async () => {
+        toolStarted.resolve()
+        await releaseTool.promise
+        return { result: 'ok' }
+      },
+    })
+    model.enqueue({ toolCalls: [{ callId: 'c1', name: 'slow', args: {} }] })
+    model.enqueue({ text: '处理完毕' })
+    const sessionId = await session.createSession()
+    const agent = makeAgent()
+    const handle = agent.start(sessionId, '开始')
+    await toolStarted.promise
+
+    const [injected] = await session.append(sessionId, [
+      {
+        type: 'subagent_result',
+        payload: { childSessionId: 'child-1', reason: 'done', content: '插队结果', truncated: false },
+      },
+    ])
+    expect(agent.wake(sessionId, injected!.seq)).toBeUndefined()
+    releaseTool.resolve()
+    expect(await handle.done).toBe('done')
+
+    expect(turns.getState(sessionId)?.phase).toBe('completed')
+    expect(model.requests).toHaveLength(2)
+    const history = await session.getHistory(sessionId)
+    expect(history.filter((e) => e.type === 'turn_started')).toHaveLength(1)
+    expect(model.requests[1]!.messages).toContainEqual({
+      role: 'user',
+      content: expect.stringContaining('插队结果'),
+    })
+  })
+
+  it('孤儿 turn 修复：上一进程遗留的半截回合在新回合前补写 interrupted', async () => {
+    const { session, model, makeAgent } = setup()
+    const sessionId = await session.createSession()
+    await session.append(sessionId, [
+      { type: 'turn_started', payload: { input: '旧任务' } },
+      { type: 'user_message', payload: { text: '旧任务' } },
+    ])
+    model.enqueue({ text: '继续完成' })
+
+    expect(await makeAgent().start(sessionId, '继续').done).toBe('done')
+
+    const history = await session.getHistory(sessionId)
+    expect(history.map((e) => e.type)).toEqual([
+      'turn_started',
+      'user_message',
+      'turn_ended',
+      'turn_started',
+      'user_message',
+      'step_started',
+      'assistant_message',
+      'step_ended',
+      'turn_ended',
+    ])
+    expect(history[2]!.payload).toEqual({ reason: 'interrupted', steps: 0 })
+  })
 })
 
 interface ModelClientLike {
   completeStream(request: ModelRequest): AsyncIterable<ModelEvent>
+}
+
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void
+  const promise = new Promise<void>((r) => {
+    resolve = r
+  })
+  return { promise, resolve }
 }

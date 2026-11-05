@@ -51,7 +51,8 @@ pnpm workspace 根在仓库根（`pnpm-workspace.yaml` → `packages/*`）。每
 db ← session ← context ← agent ← http ← app（cordis 装配）
 turn（独立）        sink（独立）
 model、tool（独立，被 agent 消费）
-subagent ← agent(LoopFactory) + session + model + tool + sink
+subagent ← agent(LoopFactory) + session + model + tool + sink + turn
+http ← subagent（子代理状态端点）
 ```
 
 | 包 | 职责 |
@@ -62,10 +63,10 @@ subagent ← agent(LoopFactory) + session + model + tool + sink
 | `sink` | 会话级有序帧队列：transition / event / delta；流式帧不落库 |
 | `model` | ModelClient 接口；Mock 实现（测试）与 OpenAI 官方 SDK 实现（baseURL 覆盖）；供应商预置表 |
 | `tool` | ToolDefinition（Zod 参数必选、输出 schema 可选）；只读 ToolService；executeBatch 统一错误兜底 |
-| `context` | 事件日志 → LLM 消息投影（纯函数）；压缩不在此版 |
-| `agent` | LoopFactory 纯函数（turn/step 两级循环）；AgentService.start 唯一入口 |
-| `subagent` | spawn（可选 sessionId 复用子会话）、send（同根互通信）、wait；结果回注父会话 |
-| `http` | HTTP+SSE 传输层：POST /sessions、POST /turns（409 互斥）、GET /sessions/:id/stream、GET /sessions/:id/history |
+| `context` | 事件日志 → LLM 消息投影（纯函数，快照附带覆盖的 seq）；压缩不在此版 |
+| `agent` | LoopFactory 纯函数（turn/step 两级循环）；AgentService.start / wake 入口（活跃 turn 唤醒挂起、收尾按需补开）；孤儿 turn 修复 |
+| `subagent` | spawn（可选 sessionId 复用子会话）、send（同根互通信）、status/wait 日志折叠、listChildren；结果回注与按事件 seq 唤醒父会话 |
+| `http` | HTTP+SSE 传输层：POST /sessions、POST /turns（409 互斥）、GET /sessions/:id/stream、GET /sessions/:id/history、GET /sessions/:id/subagents |
 | `app` | cordis 插件装配：服务注册、依赖声明、进程入口、环境（APP_ENV）灰度开关 |
 
 基础层（db 这类存储/基础设施包）与业务模块平级放在 `packages/` 下，不设独立的 infra 目录。包管理（pnpm workspace 链接）与运行时装配（cordis，见 app 包）是两个独立层面。

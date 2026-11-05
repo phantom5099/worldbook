@@ -4,11 +4,13 @@ import { TurnAlreadyActiveError } from '@worldbook/turn'
 import type { AgentService } from '@worldbook/agent'
 import type { SessionMeta, SessionService } from '@worldbook/session'
 import type { EventSink } from '@worldbook/sink'
+import type { SubagentService } from '@worldbook/subagent'
 
 export interface HttpDeps {
   session: SessionService
   sink: EventSink
   agent: AgentService
+  subagent: SubagentService
 }
 
 export interface HttpOptions {
@@ -105,7 +107,7 @@ export function createHttpServer(deps: HttpDeps, opts: HttpOptions): HttpServerH
 
   async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url ?? '/', 'http://localhost')
-    const sessionMatch = url.pathname.match(/^\/sessions\/([^/]+)(\/stream|\/history)?$/)
+    const sessionMatch = url.pathname.match(/^\/sessions\/([^/]+)(\/stream|\/history|\/subagents)?$/)
 
     if (req.method === 'POST' && url.pathname === '/sessions') {
       const body = (await readJsonBody(req)) as { meta?: SessionMeta } | undefined
@@ -159,6 +161,18 @@ export function createHttpServer(deps: HttpDeps, opts: HttpOptions): HttpServerH
       }
       const events = await deps.session.getHistory(sessionId)
       sendJson(res, 200, { sessionId, events })
+      return
+    }
+
+    if (req.method === 'GET' && sessionMatch?.[1] && sessionMatch[2] === '/subagents') {
+      const sessionId = sessionMatch[1]
+      const row = await deps.session.getSession(sessionId)
+      if (!row) {
+        sendJson(res, 404, { error: `session ${sessionId} not found` })
+        return
+      }
+      const subagents = await deps.subagent.listChildren(sessionId)
+      sendJson(res, 200, { sessionId, subagents })
       return
     }
 

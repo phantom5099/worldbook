@@ -1,6 +1,4 @@
-import type {
-  LlmMessage,
-} from '@worldbook/context'
+import type { ContextSnapshot } from '@worldbook/context'
 import type { ModelClient } from '@worldbook/model'
 import type { ToolCall } from '@worldbook/tool'
 import type { ToolService } from '@worldbook/tool'
@@ -11,7 +9,7 @@ import type { TurnRegistry, TurnClaim, TurnEndReason } from '@worldbook/turn'
 export type { TurnEndReason }
 
 export interface ContextView {
-  getContext(sessionId: string, opts?: { system?: string }): Promise<LlmMessage[]>
+  getContextSnapshot(sessionId: string, opts?: { system?: string }): Promise<ContextSnapshot>
 }
 
 export interface LoopDeps {
@@ -28,6 +26,10 @@ export interface LoopDeps {
 export interface RunTurnOptions {
   claim: TurnClaim
   signal: AbortSignal
+  /** 缺省时不写 user_message：由日志中已有事件（如 subagent_result）驱动本轮。 */
+  input?: string
+  /** 每次读取上下文后回调其覆盖的 seq，供上层判断挂起的唤醒是否已被消费。 */
+  onContextRead?: (lastSeq: number) => void
 }
 
 export interface TurnEndedPayload {
@@ -41,8 +43,8 @@ const DEFAULT_MAX_STEPS = 16
 export function createLoop(deps: LoopDeps) {
   const maxSteps = deps.maxSteps ?? DEFAULT_MAX_STEPS
 
-  async function runTurn(sessionId: string, input: string, opts: RunTurnOptions): Promise<TurnEndReason> {
-    const { claim, signal } = opts
+  async function runTurn(sessionId: string, opts: RunTurnOptions): Promise<TurnEndReason> {
+    const { claim, signal, input } = opts
     let steps = 0
 
     async function emitEvent(type: SessionEventType, payload: unknown): Promise<SessionEvent> {
@@ -70,9 +72,21 @@ export function createLoop(deps: LoopDeps) {
       return reason
     }
 
+    /** 上一进程遗留的半截 turn 不再有执行者：claim 后补写终态，避免日志出现嵌套 turn。 */
+    async function repairDanglingTurn(): Promise<void> {
+      const history = await deps.session.getHistory(sessionId)
+      let open = false
+      for (const event of history) {
+        if (event.type === 'turn_started') open = true
+        else if (event.type === 'turn_ended') open = false
+      }
+      if (open) await emitEvent('turn_ended', { reason: 'interrupted', steps: 0 })
+    }
+
     try {
+      await repairDanglingTurn()
       await emitEvent('turn_started', {})
-      await emitEvent('user_message', { text: input })
+      if (input !== undefined) await emitEvent('user_message', { text: input })
 
       let reason: TurnEndReason | undefined
       while (steps < maxSteps) {
@@ -82,7 +96,7 @@ export function createLoop(deps: LoopDeps) {
         }
         steps += 1
         await emitEvent('step_started', { step: steps })
-        const stepReason = await runStep(sessionId, claim.turnId, signal, emitEvent)
+        const stepReason = await runStep(sessionId, claim.turnId, signal, emitEvent, opts.onContextRead)
         await emitEvent('step_ended', { step: steps })
         if (stepReason) {
           reason = stepReason
@@ -102,8 +116,11 @@ export function createLoop(deps: LoopDeps) {
     turnId: string,
     signal: AbortSignal,
     emitEvent: (type: SessionEventType, payload: unknown) => Promise<SessionEvent>,
+    onContextRead?: (lastSeq: number) => void,
   ): Promise<TurnEndReason | undefined> {
-    const messages = await deps.context.getContext(sessionId, { system: deps.system })
+    const snapshot = await deps.context.getContextSnapshot(sessionId, { system: deps.system })
+    onContextRead?.(snapshot.lastSeq)
+    const messages = snapshot.messages
     const toolSpecs = deps.tools.list()
 
     let text = ''

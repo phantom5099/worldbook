@@ -124,6 +124,9 @@ importers:
       '@worldbook/sink':
         specifier: workspace:*
         version: link:../sink
+      '@worldbook/subagent':
+        specifier: workspace:*
+        version: link:../subagent
       '@worldbook/turn':
         specifier: workspace:*
         version: link:../turn

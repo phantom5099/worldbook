@@ -10,6 +10,7 @@
     "@worldbook/agent": "workspace:*",
     "@worldbook/session": "workspace:*",
     "@worldbook/sink": "workspace:*",
+    "@worldbook/subagent": "workspace:*",
     "@worldbook/turn": "workspace:*"
   },
   "devDependencies": {

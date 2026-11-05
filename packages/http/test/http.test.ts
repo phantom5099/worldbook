@@ -4,6 +4,7 @@ import { ContextService } from '@worldbook/context'
 import { MockModelClient } from '@worldbook/model'
 import { EventSink } from '@worldbook/sink'
 import { MemoryStore, SessionService } from '@worldbook/session'
+import { SubagentService } from '@worldbook/subagent'
 import { ToolRegistry } from '@worldbook/tool'
 import { TurnRegistry } from '@worldbook/turn'
 import { createHttpServer } from '../src/http.js'
@@ -23,8 +24,16 @@ const agent = new AgentService({
   turns,
   sink,
 })
+const subagent = new SubagentService({
+  session,
+  sink,
+  turns,
+  context: new ContextService(session),
+  model,
+  tools,
+})
 
-const server = createHttpServer({ session, sink, agent }, { port: 0, host: '127.0.0.1' })
+const server = createHttpServer({ session, sink, agent, subagent }, { port: 0, host: '127.0.0.1' })
 const BASE = 'http://127.0.0.1'
 
 async function createSession(): Promise<string> {
@@ -142,5 +151,32 @@ describe('HTTP 传输层', () => {
     })
     expect(res.status).toBe(409)
     turns.settle(claim.turnId, 'done')
+  })
+
+  it('GET /sessions/:id/subagents 返回子代理状态，未知会话 404', async () => {
+    model.enqueue({ text: '子任务结果' })
+    const sessionId = await createSession()
+    const childId = await subagent.spawn(sessionId, { systemPrompt: 's', task: 't' })
+    await subagent.wait(childId)
+
+    const res = await fetch(`${BASE}:${server.port()}/sessions/${sessionId}/subagents`)
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { sessionId: string; subagents: unknown[] }
+    expect(body.sessionId).toBe(sessionId)
+    expect(body.subagents).toEqual([
+      {
+        childSessionId: childId,
+        status: 'completed',
+        result: {
+          childSessionId: childId,
+          reason: 'done',
+          content: '子任务结果',
+          truncated: false,
+        },
+      },
+    ])
+
+    const missing = await fetch(`${BASE}:${server.port()}/sessions/does-not-exist/subagents`)
+    expect(missing.status).toBe(404)
   })
 })

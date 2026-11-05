@@ -5,7 +5,7 @@
 ## 结构
 
 - `projectMessages(events, opts)`：纯函数，事件日志 → LLM 消息数组，可独立单测。
-- `ContextService`：`getContext(sessionId, opts)` = getHistory + projectMessages，loop 每 step 调用。
+- `ContextService.getContextSnapshot(sessionId, opts)`：getHistory + projectMessages，返回 `ContextSnapshot {messages, lastSeq}`（`lastSeq` 为快照覆盖的最后一条事件 seq，空会话为 0）；`getContext` 只返回其中的 `messages`。loop 每 step 调用快照版。
 
 ## 投影规则
 
@@ -17,5 +17,5 @@
 
 ## 不变量与边界
 
-- 压缩/裁剪是投影函数的内部实现演进，`getContext` 接口不变（方案 D-3）；本版无压缩。
+- 压缩/裁剪是投影函数的内部实现演进，`getContextSnapshot` 接口不变；本版无压缩。
 - 本模块不关心 system prompt 内容来源，由调用方传入。

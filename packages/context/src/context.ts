@@ -16,6 +16,12 @@ export interface ContextOptions {
   system?: string
 }
 
+export interface ContextSnapshot {
+  messages: LlmMessage[]
+  /** 快照覆盖的最后一条事件 seq；空会话为 0。 */
+  lastSeq: number
+}
+
 function projectUserText(payload: unknown): string | undefined {
   if (typeof payload === 'object' && payload !== null && 'text' in payload) {
     const text = (payload as { text: unknown }).text
@@ -75,8 +81,18 @@ export function projectMessages(
 export class ContextService {
   constructor(private readonly session: SessionService) {}
 
-  async getContext(sessionId: SessionId, opts: ContextOptions = {}): Promise<LlmMessage[]> {
+  async getContextSnapshot(
+    sessionId: SessionId,
+    opts: ContextOptions = {},
+  ): Promise<ContextSnapshot> {
     const events = await this.session.getHistory(sessionId)
-    return projectMessages(events, opts)
+    return {
+      messages: projectMessages(events, opts),
+      lastSeq: events.at(-1)?.seq ?? 0,
+    }
+  }
+
+  async getContext(sessionId: SessionId, opts: ContextOptions = {}): Promise<LlmMessage[]> {
+    return (await this.getContextSnapshot(sessionId, opts)).messages
   }
 }

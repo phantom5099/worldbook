@@ -57,7 +57,11 @@ class MemoryStore implements SessionStore {
   }
 }
 
-function setup(opts?: { maxDepth?: number; resultMaxChars?: number }) {
+function setup(opts?: {
+  maxDepth?: number
+  resultMaxChars?: number
+  wake?: (sessionId: string, seq: number) => void
+}) {
   const store = new MemoryStore()
   const session = new SessionService(store)
   const context = new ContextService(session)
@@ -76,6 +80,7 @@ function setup(opts?: { maxDepth?: number; resultMaxChars?: number }) {
       tools: tools(),
       maxDepth: opts?.maxDepth,
       resultMaxChars: opts?.resultMaxChars,
+      wake: opts?.wake,
     })
   return { store, session, context, model, registry, turns, sink, tools, subagent }
 }
@@ -96,16 +101,24 @@ describe('subagent spawn', () => {
 
     const result = await svc.wait(childId)
     expect(result).toMatchObject({
-      childSessionId: childId,
-      reason: 'done',
-      content: '子任务完成',
-      truncated: false,
+      status: 'completed',
+      result: {
+        childSessionId: childId,
+        reason: 'done',
+        content: '子任务完成',
+        truncated: false,
+      },
     })
     expect(turns.getState(childId)).toMatchObject({ phase: 'completed' })
 
     const parentHistory = await session.getHistory(sessionId)
     const spawned = parentHistory.find((e) => e.type === 'subagent_spawned')!
-    expect(spawned.payload).toMatchObject({ childSessionId: childId, task: '做点事', reused: false })
+    expect(spawned.payload).toMatchObject({
+      childSessionId: childId,
+      task: '做点事',
+      reused: false,
+      systemPrompt: '你是助手',
+    })
     const injected = parentHistory.find((e) => e.type === 'subagent_result')!
     expect(injected.payload).toMatchObject({
       childSessionId: childId,
@@ -186,7 +199,10 @@ describe('subagent spawn', () => {
     await expect(
       svc.spawn(sessionId, { systemPrompt: 's', task: 't2' }, { sessionId: childId }),
     ).rejects.toThrow()
-    expect(await svc.wait(childId)).toMatchObject({ reason: 'done' })
+    expect(await svc.wait(childId)).toMatchObject({
+      status: 'completed',
+      result: { reason: 'done' },
+    })
   })
 })
 
@@ -246,8 +262,124 @@ describe('subagent send', () => {
     expect((message as { content: string }).content).toContain('插话')
   })
 
-  it('wait 未知子代理抛错', async () => {
+  it('wait 未知子代理返回 unknown', async () => {
     const { subagent } = setup()
-    expect(() => subagent().wait('no-such-id')).toThrow()
+    await expect(subagent().wait('no-such-id')).resolves.toEqual({ status: 'unknown' })
+  })
+})
+
+describe('subagent 状态与唤醒', () => {
+  it('子代理完成后以结果事件序号唤醒父会话', async () => {
+    const woke: Array<{ sessionId: string; seq: number }> = []
+    const { session, model, subagent } = setup({ wake: (sessionId, seq) => woke.push({ sessionId, seq }) })
+    const sessionId = await session.createSession()
+    model.enqueue({ text: '完成' })
+    const svc = subagent()
+
+    const childId = await svc.spawn(sessionId, { systemPrompt: 's', task: 't' })
+    await svc.wait(childId)
+    const injected = (await session.getHistory(sessionId)).find((e) => e.type === 'subagent_result')!
+    expect(woke).toEqual([{ sessionId, seq: injected.seq }])
+  })
+
+  it('send 默认唤醒目标，wake=false 仅入队', async () => {
+    const woke: Array<{ sessionId: string; seq: number }> = []
+    const { session, subagent } = setup({ wake: (sessionId, seq) => woke.push({ sessionId, seq }) })
+    const root = await session.createSession()
+    const from = await session.createSession({ parentId: root, depth: 1 })
+    const target = await session.createSession({ parentId: root, depth: 1 })
+    const svc = subagent()
+
+    await svc.send(from, target, '一')
+    const delivered = (await session.getHistory(target)).find((e) => e.type === 'subagent_message')!
+    expect(woke).toEqual([{ sessionId: target, seq: delivered.seq }])
+    await svc.send(from, target, '二', { wake: false })
+    expect(woke).toEqual([{ sessionId: target, seq: delivered.seq }])
+  })
+
+  it('wait 超时返回当前状态与 timedOut', async () => {
+    const { session, turns, subagent } = setup()
+    const childId = await session.createSession()
+    const claim = turns.claim(childId)
+
+    await expect(subagent().wait(childId, { timeoutMs: 20 })).resolves.toEqual({
+      status: 'running',
+      timedOut: true,
+    })
+    turns.settle(claim.turnId, 'done')
+  })
+
+  it('重启后从日志折叠：半截回合为 interrupted，已结束回合返回结果', async () => {
+    const { session, subagent } = setup()
+    const dangling = await session.createSession()
+    await session.append(dangling, [
+      { type: 'turn_started', payload: {} },
+      { type: 'assistant_message', payload: { text: '没跑完' } },
+    ])
+    const finished = await session.createSession()
+    await session.append(finished, [
+      { type: 'turn_started', payload: {} },
+      { type: 'assistant_message', payload: { text: '跑完了' } },
+      { type: 'turn_ended', payload: { reason: 'done', steps: 1 } },
+    ])
+    const svc = subagent()
+
+    await expect(svc.status(dangling)).resolves.toEqual({ status: 'interrupted' })
+    await expect(svc.wait(dangling)).resolves.toEqual({ status: 'interrupted' })
+    await expect(svc.wait(finished)).resolves.toEqual({
+      status: 'completed',
+      result: { childSessionId: finished, reason: 'done', content: '跑完了', truncated: false },
+    })
+  })
+
+  it('复用子会话后立刻 wait 不会返回上一轮结果', async () => {
+    const { session, model, registry, subagent } = setup()
+    registry.set({
+      name: 'slow',
+      description: '慢工具',
+      parameters: z.object({}),
+      execute: async () => {
+        await new Promise((r) => setTimeout(r, 50))
+        return { result: 'ok' }
+      },
+    })
+    const parent = await session.createSession()
+    const child = await session.createSession({ parentId: parent, depth: 1 })
+    const svc = subagent()
+
+    model.enqueue({ text: '第一轮' })
+    await svc.spawn(parent, { systemPrompt: 's', task: '一' }, { sessionId: child })
+    await svc.wait(child)
+
+    model.enqueue({ toolCalls: [{ callId: 'c1', name: 'slow', args: {} }] })
+    model.enqueue({ text: '第二轮' })
+    await svc.spawn(parent, { systemPrompt: 's', task: '二' }, { sessionId: child })
+    await expect(svc.wait(child, { timeoutMs: 10 })).resolves.toEqual({
+      status: 'running',
+      timedOut: true,
+    })
+    await expect(svc.wait(child)).resolves.toMatchObject({
+      status: 'completed',
+      result: { content: '第二轮' },
+    })
+  })
+
+  it('listChildren 汇总子代理状态与结果', async () => {
+    const { session, model, subagent } = setup()
+    const parent = await session.createSession()
+    model.enqueue({ text: '甲' })
+    model.enqueue({ text: '乙' })
+    const svc = subagent()
+
+    const first = await svc.spawn(parent, { systemPrompt: 's', task: '一' })
+    await svc.wait(first)
+    const second = await svc.spawn(parent, { systemPrompt: 's', task: '二' })
+    await svc.wait(second)
+
+    const infos = await svc.listChildren(parent)
+    expect(infos.map((i) => i.childSessionId)).toEqual([first, second])
+    expect(infos.map((i) => i.status)).toEqual(['completed', 'completed'])
+    expect(infos.map((i) => i.result?.content)).toEqual(['甲', '乙'])
+    await expect(svc.listChildren((await session.createSession()))).resolves.toEqual([])
   })
 })
