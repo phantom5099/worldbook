@@ -1,0 +1,10 @@
+packages:
+  - packages/*
+
+allowBuilds:
+  esbuild: true
+
+minimumReleaseAgeExclude:
+  - openai@7.51.0
+
+verifyDepsBeforeRun: false

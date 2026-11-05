@@ -1,0 +1,253 @@
+import { randomUUID } from 'node:crypto'
+import { describe, expect, it } from 'vitest'
+import { z } from 'zod'
+import { SessionService } from '@worldbook/session'
+import type { SessionRow, SessionStatus, SessionStore, StoredEvent } from '@worldbook/session'
+import { ContextService } from '@worldbook/context'
+import { EventSink } from '@worldbook/sink'
+import { TurnRegistry } from '@worldbook/turn'
+import { ToolRegistry } from '@worldbook/tool'
+import { MockModelClient } from '@worldbook/model'
+import { AgentService } from '@worldbook/agent'
+import { SubagentService } from '../src/index.js'
+import {
+  SubagentDepthLimitError,
+  SubagentReuseError,
+  SubagentSendScopeError,
+} from '../src/index.js'
+
+class MemoryStore implements SessionStore {
+  sessions = new Map<string, SessionRow>()
+  events = new Map<string, StoredEvent[]>()
+
+  async createSession(meta: { parentId?: string; depth?: number }): Promise<string> {
+    const id = randomUUID()
+    this.sessions.set(id, {
+      id,
+      parentId: meta.parentId ?? null,
+      depth: meta.depth ?? 0,
+      status: 'active',
+      meta,
+    })
+    return id
+  }
+
+  async insertEvents(sessionId: string, events: ReadonlyArray<StoredEvent>): Promise<void> {
+    const list = this.events.get(sessionId) ?? []
+    list.push(...events)
+    this.events.set(sessionId, list)
+  }
+
+  async selectEvents(sessionId: string, afterSeq: number, limit?: number) {
+    const list = (this.events.get(sessionId) ?? []).filter((e) => e.seq > afterSeq)
+    return (limit !== undefined ? list.slice(0, limit) : list).map((e) => ({ ...e }))
+  }
+
+  async maxSeq(sessionId: string): Promise<number> {
+    return (this.events.get(sessionId) ?? []).reduce((max, e) => Math.max(max, e.seq), 0)
+  }
+
+  async getSession(sessionId: string) {
+    return this.sessions.get(sessionId)
+  }
+
+  async setStatus(sessionId: string, status: SessionStatus): Promise<void> {
+    const row = this.sessions.get(sessionId)
+    if (row) row.status = status
+  }
+}
+
+function setup(opts?: { maxDepth?: number; resultMaxChars?: number }) {
+  const store = new MemoryStore()
+  const session = new SessionService(store)
+  const context = new ContextService(session)
+  const model = new MockModelClient()
+  const registry = new ToolRegistry()
+  const turns = new TurnRegistry()
+  const sink = new EventSink()
+  const tools = () => registry.toService()
+  const subagent = () =>
+    new SubagentService({
+      session,
+      sink,
+      turns,
+      context,
+      model,
+      tools: tools(),
+      maxDepth: opts?.maxDepth,
+      resultMaxChars: opts?.resultMaxChars,
+    })
+  return { store, session, context, model, registry, turns, sink, tools, subagent }
+}
+
+describe('subagent spawn', () => {
+  it('创建子会话并回注结果：parent_id/depth 正确，subagent_result 带最终文本', async () => {
+    const { session, model, turns, subagent } = setup()
+    const sessionId = await session.createSession()
+    model.enqueue({ text: '子任务完成' })
+    const svc = subagent()
+
+    const childId = await svc.spawn(sessionId, {
+      systemPrompt: '你是助手',
+      task: '做点事',
+    })
+    const childRow = await session.getSession(childId)
+    expect(childRow).toMatchObject({ parentId: sessionId, depth: 1 })
+
+    const result = await svc.wait(childId)
+    expect(result).toMatchObject({
+      childSessionId: childId,
+      reason: 'done',
+      content: '子任务完成',
+      truncated: false,
+    })
+    expect(turns.getState(childId)).toMatchObject({ phase: 'completed' })
+
+    const parentHistory = await session.getHistory(sessionId)
+    const spawned = parentHistory.find((e) => e.type === 'subagent_spawned')!
+    expect(spawned.payload).toMatchObject({ childSessionId: childId, task: '做点事', reused: false })
+    const injected = parentHistory.find((e) => e.type === 'subagent_result')!
+    expect(injected.payload).toMatchObject({
+      childSessionId: childId,
+      reason: 'done',
+      content: '子任务完成',
+    })
+
+    const childHistory = await session.getHistory(childId)
+    expect(childHistory[0]!.type).toBe('turn_started')
+    const messages = model.requests[0]!.messages
+    expect(messages[0]).toEqual({ role: 'system', content: '你是助手' })
+    expect(messages[1]).toEqual({ role: 'user', content: '做点事' })
+  })
+
+  it('复用既有子会话：不新建会话，历史续跑', async () => {
+    const { session, model, subagent } = setup()
+    const sessionId = await session.createSession()
+    const reusedId = await session.createSession({ parentId: sessionId, depth: 1 })
+    model.enqueue({ text: '第一轮' })
+    model.enqueue({ text: '第二轮续跑' })
+
+    const svc = subagent()
+    const first = await svc.spawn(sessionId, { systemPrompt: 's', task: '任务一' }, { sessionId: reusedId })
+    expect(first).toBe(reusedId)
+    await svc.wait(reusedId)
+    const second = await svc.spawn(sessionId, { systemPrompt: 's', task: '任务二' }, { sessionId: reusedId })
+    expect(second).toBe(reusedId)
+    await svc.wait(reusedId)
+
+    const childHistory = await session.getHistory(reusedId)
+    expect(childHistory.filter((e) => e.type === 'turn_started')).toHaveLength(2)
+    const parentHistory = await session.getHistory(sessionId)
+    expect(parentHistory.find((e) => e.type === 'subagent_spawned' && (e.payload as { reused: boolean }).reused)).toBeTruthy()
+    const results = parentHistory.filter((e) => e.type === 'subagent_result')
+    expect(results).toHaveLength(2)
+    expect(results[1]!.payload).toMatchObject({ content: '第二轮续跑' })
+
+    // 第二轮上下文包含第一轮历史
+    const secondRequest = model.requests[1]!
+    expect(secondRequest.messages.some((m) => m.role === 'assistant' && m.content === '第一轮')).toBe(true)
+  })
+
+  it('复用非子会话被拒绝', async () => {
+    const { session, subagent } = setup()
+    const parentA = await session.createSession()
+    const stranger = await session.createSession()
+    await expect(
+      subagent().spawn(parentA, { systemPrompt: 's', task: 't' }, { sessionId: stranger }),
+    ).rejects.toThrow(SubagentReuseError)
+  })
+
+  it('超过深度上限被拒绝', async () => {
+    const { session, subagent } = setup({ maxDepth: 2 })
+    const root = await session.createSession()
+    const child = await session.createSession({ parentId: root, depth: 1 })
+    const grandchild = await session.createSession({ parentId: child, depth: 2 })
+    await expect(
+      subagent().spawn(grandchild, { systemPrompt: 's', task: 't' }),
+    ).rejects.toThrow(SubagentDepthLimitError)
+  })
+
+  it('子代理忙碌时 spawn 拒绝（同会话单活跃 turn）', async () => {
+    const { session, model, registry, subagent } = setup()
+    registry.set({
+      name: 'slow',
+      description: '慢工具',
+      parameters: z.object({}),
+      execute: async () => {
+        await new Promise((r) => setTimeout(r, 50))
+        return { result: 'ok' }
+      },
+    })
+    model.enqueue({ toolCalls: [{ callId: 'c1', name: 'slow', args: {} }] })
+    model.enqueue({ text: '完成' })
+    const sessionId = await session.createSession()
+    const svc = subagent()
+    const childId = await svc.spawn(sessionId, { systemPrompt: 's', task: 't' })
+    await expect(
+      svc.spawn(sessionId, { systemPrompt: 's', task: 't2' }, { sessionId: childId }),
+    ).rejects.toThrow()
+    expect(await svc.wait(childId)).toMatchObject({ reason: 'done' })
+  })
+})
+
+describe('subagent send', () => {
+  it('同一根会话下投递成功，跨根被拒绝', async () => {
+    const { session, subagent } = setup()
+    const root1 = await session.createSession()
+    const root2 = await session.createSession()
+    const a = await session.createSession({ parentId: root1, depth: 1 })
+    const b = await session.createSession({ parentId: root1, depth: 1 })
+    const outsider = await session.createSession({ parentId: root2, depth: 1 })
+
+    const svc = subagent()
+    await svc.send(a, b, '你好，兄弟')
+    const bHistory = await session.getHistory(b)
+    expect(bHistory).toHaveLength(1)
+    expect(bHistory[0]!.payload).toMatchObject({ fromSessionId: a, content: '你好，兄弟' })
+
+    await expect(svc.send(a, outsider, '越界')).rejects.toThrow(SubagentSendScopeError)
+  })
+
+  it('运行中的目标会话在 step 边界吸收消息', async () => {
+    const { session, model, registry, subagent, tools } = setup()
+    const root = await session.createSession()
+    const from = await session.createSession({ parentId: root, depth: 1 })
+    const target = await session.createSession({ parentId: root, depth: 1 })
+
+    registry.set({
+      name: 'relay',
+      description: '转发消息',
+      parameters: z.object({ text: z.string() }),
+      execute: async (args: { text: string }, ctx) => {
+        await subagent().send(from, ctx.sessionId, args.text)
+        return { result: 'sent' }
+      },
+    })
+
+    model.enqueue({ toolCalls: [{ callId: 'c1', name: 'relay', args: { text: '插话' } }] })
+    model.enqueue({ text: '收到插话' })
+
+    const agent = new AgentService({
+      session,
+      context: new ContextService(session),
+      model,
+      tools: tools(),
+      turns: new TurnRegistry(),
+      sink: new EventSink(),
+    })
+    const handle = agent.start(target, '开始工作')
+    expect(await handle.done).toBe('done')
+
+    const secondRequest = model.requests[1]!
+    const message = secondRequest.messages.find(
+      (m) => m.role === 'user' && m.content.includes('来自于智能体'),
+    )
+    expect(message).toBeTruthy()
+    expect((message as { content: string }).content).toContain('插话')
+  })
+
+  it('wait 未知子代理抛错', async () => {
+    const { subagent } = setup()
+    expect(() => subagent().wait('no-such-id')).toThrow()
+  })
+})

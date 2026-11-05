@@ -1,0 +1,20 @@
+{
+  "name": "@worldbook/http",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@worldbook/agent": "workspace:*",
+    "@worldbook/session": "workspace:*",
+    "@worldbook/sink": "workspace:*",
+    "@worldbook/turn": "workspace:*"
+  },
+  "devDependencies": {
+    "@worldbook/context": "workspace:*",
+    "@worldbook/model": "workspace:*",
+    "@worldbook/tool": "workspace:*"
+  }
+}

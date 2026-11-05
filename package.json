@@ -1,0 +1,26 @@
+{
+  "name": "worldbook",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "start": "tsx packages/app/src/main.ts",
+    "migrate": "tsx scripts/migrate.ts",
+    "smoke": "tsx scripts/smoke.ts"
+  },
+  "dependencies": {
+    "@worldbook/app": "workspace:*",
+    "@worldbook/db": "workspace:*",
+    "@worldbook/http": "workspace:*",
+    "@worldbook/model": "workspace:*",
+    "@worldbook/sink": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.2",
+    "vitest": "^5.1.0"
+  }
+}
