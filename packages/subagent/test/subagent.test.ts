@@ -59,7 +59,6 @@ class MemoryStore implements SessionStore {
 
 function setup(opts?: {
   maxDepth?: number
-  resultMaxChars?: number
   wake?: (sessionId: string, seq: number) => void
 }) {
   const store = new MemoryStore()
@@ -79,7 +78,6 @@ function setup(opts?: {
       model,
       tools: tools(),
       maxDepth: opts?.maxDepth,
-      resultMaxChars: opts?.resultMaxChars,
       wake: opts?.wake,
     })
   return { store, session, context, model, registry, turns, sink, tools, subagent }
@@ -101,12 +99,11 @@ describe('subagent spawn', () => {
 
     const result = await svc.wait(childId)
     expect(result).toMatchObject({
-      status: 'completed',
+      phase: 'completed',
       result: {
         childSessionId: childId,
         reason: 'done',
         content: '子任务完成',
-        truncated: false,
       },
     })
     expect(turns.getState(childId)).toMatchObject({ phase: 'completed' })
@@ -200,7 +197,7 @@ describe('subagent spawn', () => {
       svc.spawn(sessionId, { systemPrompt: 's', task: 't2' }, { sessionId: childId }),
     ).rejects.toThrow()
     expect(await svc.wait(childId)).toMatchObject({
-      status: 'completed',
+      phase: 'completed',
       result: { reason: 'done' },
     })
   })
@@ -264,7 +261,7 @@ describe('subagent send', () => {
 
   it('wait 未知子代理返回 unknown', async () => {
     const { subagent } = setup()
-    await expect(subagent().wait('no-such-id')).resolves.toEqual({ status: 'unknown' })
+    await expect(subagent().wait('no-such-id')).resolves.toEqual({ phase: 'unknown' })
   })
 })
 
@@ -303,13 +300,13 @@ describe('subagent 状态与唤醒', () => {
     await turns.claim(childId)
 
     await expect(subagent().wait(childId, { timeoutMs: 20 })).resolves.toEqual({
-      status: 'running',
+      phase: 'running',
       timedOut: true,
     })
     turns.settle(childId, 'done')
   })
 
-  it('重启后从日志折叠：半截回合为 interrupted，已结束回合返回结果', async () => {
+  it('重启后从日志折叠：半截回合为 cancelled，已结束回合返回结果', async () => {
     const { session, subagent } = setup()
     const dangling = await session.createSession()
     await session.append(dangling, [
@@ -324,11 +321,12 @@ describe('subagent 状态与唤醒', () => {
     ])
     const svc = subagent()
 
-    await expect(svc.status(dangling)).resolves.toEqual({ status: 'interrupted' })
-    await expect(svc.wait(dangling)).resolves.toEqual({ status: 'interrupted' })
+    await expect(svc.status(dangling)).resolves.toEqual({ phase: 'cancelled' })
+    await expect(svc.wait(dangling)).resolves.toEqual({ phase: 'cancelled' })
     await expect(svc.wait(finished)).resolves.toEqual({
-      status: 'completed',
-      result: { childSessionId: finished, reason: 'done', content: '跑完了', truncated: false },
+      phase: 'completed',
+      reason: 'done',
+      result: { childSessionId: finished, reason: 'done', content: '跑完了' },
     })
   })
 
@@ -355,11 +353,11 @@ describe('subagent 状态与唤醒', () => {
     model.enqueue({ text: '第二轮' })
     await svc.spawn(parent, { systemPrompt: 's', task: '二' }, { sessionId: child })
     await expect(svc.wait(child, { timeoutMs: 10 })).resolves.toEqual({
-      status: 'running',
+      phase: 'running',
       timedOut: true,
     })
     await expect(svc.wait(child)).resolves.toMatchObject({
-      status: 'completed',
+      phase: 'completed',
       result: { content: '第二轮' },
     })
   })
@@ -378,7 +376,7 @@ describe('subagent 状态与唤醒', () => {
 
     const infos = await svc.listChildren(parent)
     expect(infos.map((i) => i.childSessionId)).toEqual([first, second])
-    expect(infos.map((i) => i.status)).toEqual(['completed', 'completed'])
+    expect(infos.map((i) => i.phase)).toEqual(['completed', 'completed'])
     expect(infos.map((i) => i.result?.content)).toEqual(['甲', '乙'])
     await expect(svc.listChildren((await session.createSession()))).resolves.toEqual([])
   })

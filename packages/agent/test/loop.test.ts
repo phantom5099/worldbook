@@ -294,7 +294,7 @@ describe('agent loop', () => {
     const [injected] = await session.append(sessionId, [
       {
         type: 'subagent_result',
-        payload: { childSessionId: 'child-1', reason: 'done', content: '查到的资料', truncated: false },
+        payload: { childSessionId: 'child-1', reason: 'done', content: '查到的资料' },
       },
     ])
     model.enqueue({ text: '已汇总' })
@@ -345,7 +345,7 @@ describe('agent loop', () => {
     const [injected] = await session.append(sessionId, [
       {
         type: 'subagent_result',
-        payload: { childSessionId: 'child-1', reason: 'done', content: '查到的资料', truncated: false },
+        payload: { childSessionId: 'child-1', reason: 'done', content: '查到的资料' },
       },
     ])
     expect(await agent.wake(sessionId, injected!.seq)).toBeUndefined()
@@ -392,7 +392,7 @@ describe('agent loop', () => {
     const [injected] = await session.append(sessionId, [
       {
         type: 'subagent_result',
-        payload: { childSessionId: 'child-1', reason: 'done', content: '插队结果', truncated: false },
+        payload: { childSessionId: 'child-1', reason: 'done', content: '插队结果' },
       },
     ])
     expect(await agent.wake(sessionId, injected!.seq)).toBeUndefined()

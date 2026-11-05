@@ -58,7 +58,7 @@ http ← subagent（子代理状态端点）
 | 包 | 职责 |
 |---|---|
 | `db` | postgres.js 连接池封装 + 版本化迁移（migrations/），唯一 DB 出口 |
-| `session` | 事件类型定义；事件追加（seq 分配）、历史获取；MemoryStore / PostgresSessionStore |
+| `session` | 事件类型定义；事件追加（seq 分配）、历史获取；PostgresSessionStore（MemoryStore 在 `testing` 子路径） |
 | `turn` | turn 状态机：claim（异步、按 session 互斥）、settle 幂等唯一终态、getState 快照；回合号由持久化日志续接 |
 | `sink` | 会话级有序帧队列：transition / event / delta；流式帧不落库 |
 | `model` | ModelClient 接口；Mock 实现（测试）与 OpenAI 官方 SDK 实现（baseURL 覆盖）；供应商预置表 |

@@ -1,4 +1,4 @@
--- 迁移 001：sessions / session_events 初始表结构（方案 §4 DDL）
+-- 迁移 001：sessions / session_events 初始表结构
 create table if not exists sessions (
   id uuid primary key default gen_random_uuid(),
   parent_id uuid references sessions(id) on delete cascade,

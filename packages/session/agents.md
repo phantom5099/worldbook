@@ -1,6 +1,6 @@
 # session
 
-会话事件持久化。源码 `src/`：`types.ts`（事件类型）、`store.ts`（SessionStore 接口）、`pg-store.ts`（PG 实现）、`session.ts`（SessionService）、`memory-store.ts`（内存存储，自 app 包下沉）、`index.ts`（仅 re-export）。测试 `test/`：`session.test.ts`（FakeStore 单测）、`pg-store.test.ts`（PG 集成，无 DATABASE_URL 跳过）。
+会话事件持久化。源码 `src/`：`types.ts`（事件类型）、`store.ts`（SessionStore 接口）、`pg-store.ts`（PG 实现）、`session.ts`（SessionService）、`index.ts`（仅 re-export）。`testing/` 提供内存版 `SessionStore`，经 `@worldbook/session/testing` 子路径导出，仅供测试与无 PG 装配使用。测试 `test/`：`session.test.ts`（FakeStore 单测）、`pg-store.test.ts`（PG 集成，无 DATABASE_URL 跳过）。
 
 ## 职责
 

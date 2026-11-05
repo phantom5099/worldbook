@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { TurnAlreadyActiveError, TurnRegistry } from '../src/index.js'
+import { foldTurnState, TurnAlreadyActiveError, TurnRegistry } from '../src/index.js'
 
 function registryWith(lastTurnId: (sessionId: string) => number = () => 0): TurnRegistry {
   return new TurnRegistry({ lastTurnId: async (sessionId) => lastTurnId(sessionId) })
@@ -57,5 +57,51 @@ describe('TurnRegistry', () => {
     registry.settle('s1', 'done')
     const second = await registry.claim('s1')
     expect(second.turnId).toBe(first.turnId + 1)
+  })
+})
+
+describe('foldTurnState', () => {
+  const started = { type: 'turn_started', payload: {} }
+  const ended = (reason: unknown) => ({ type: 'turn_ended', payload: { reason, steps: 1 } })
+
+  it('无回合记录为 unknown', () => {
+    expect(foldTurnState([], false)).toEqual({ phase: 'unknown' })
+    expect(foldTurnState([{ type: 'user_message', payload: { text: 'x' } }], false)).toEqual({
+      phase: 'unknown',
+    })
+  })
+
+  it('有活跃执行者即为 running，覆盖日志中的旧终态', () => {
+    expect(foldTurnState([started], true)).toEqual({ phase: 'running' })
+    expect(foldTurnState([started, ended('done')], true)).toEqual({ phase: 'running' })
+  })
+
+  it('未闭合且无执行者折叠为 cancelled', () => {
+    expect(
+      foldTurnState([started, { type: 'assistant_message', payload: { text: '半截' } }], false),
+    ).toEqual({ phase: 'cancelled' })
+  })
+
+  it('已结束回合按 reason 折叠并保留 reason', () => {
+    expect(foldTurnState([started, ended('done')], false)).toEqual({
+      phase: 'completed',
+      reason: 'done',
+    })
+    expect(foldTurnState([started, ended('max_steps')], false)).toEqual({
+      phase: 'completed',
+      reason: 'max_steps',
+    })
+    expect(foldTurnState([started, ended('interrupted')], false)).toEqual({
+      phase: 'cancelled',
+      reason: 'interrupted',
+    })
+    expect(foldTurnState([started, ended('error')], false)).toEqual({
+      phase: 'failed',
+      reason: 'error',
+    })
+    expect(foldTurnState([started, ended('bogus')], false)).toEqual({
+      phase: 'failed',
+      reason: 'error',
+    })
   })
 })

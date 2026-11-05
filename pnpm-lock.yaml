@@ -27,6 +27,9 @@ importers:
       '@types/node':
         specifier: ^26.6.6
         version: 26.6.6
+      '@worldbook/session':
+        specifier: workspace:*
+        version: link:packages/session
       tsx:
         specifier: ^4.23.15
         version: 4.23.15

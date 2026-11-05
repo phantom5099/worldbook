@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { MockModelClient } from '@worldbook/model'
+import { MemoryStore } from '@worldbook/session/testing'
 import type { ToolRegistry } from '@worldbook/tool'
 import { createApp, registerSubagentTools } from '../src/index.js'
 import type { SubagentService } from '@worldbook/subagent'
 
 function makeConfig(model: MockModelClient) {
   return {
-    database: { memory: true as const },
+    database: { store: new MemoryStore() },
     model: { baseUrl: 'unused', apiKey: 'unused', model: 'unused' },
     modelClient: model,
     registerTools: (registry: ToolRegistry, resolve: () => SubagentService) => {

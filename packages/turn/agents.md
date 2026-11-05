@@ -4,7 +4,7 @@ turn 状态机。源码 `src/turn.ts`（`index.ts` 仅 re-export），测试 `te
 
 ## 职责
 
-单会话单活跃 turn 的互斥与终结：`claim(sessionId)` / `settle(sessionId, reason)` / `getState(sessionId)`。
+单会话单活跃 turn 的互斥与终结：`claim(sessionId)` / `settle(sessionId, reason)` / `getState(sessionId)`；以及从事件日志折叠回合状态的 `foldTurnState(events, active)`。
 
 ## 回合编号
 
@@ -18,6 +18,13 @@ turn 状态机。源码 `src/turn.ts`（`index.ts` 仅 re-export），测试 `te
 - `settle` 幂等且是唯一终态出口：终态以第一次调用为准；对无活跃回合的会话无副作用。
 - phase 初始即 `running`（claim 即启动，无 pending 观测态）；`reason → phase` 映射固定：done/max_steps→completed、interrupted→cancelled、error→failed。
 - 中断不在本模块：由 `agent` 模块的 TurnHandle 触发 AbortController，loop 收尾后调 `settle(sessionId, 'interrupted')`。
+
+## 日志折叠
+
+- `foldTurnState(events: TurnEventView[], active: boolean)` → `FoldedTurnState {phase, reason?}`：`TurnEventView` 只取 `{type, payload?}`，结构兼容 `SessionEvent`，turn 不依赖 session 包。
+- `active` 优先：进程内已有 claim 即返回 `running`，覆盖日志滞后（新一轮 `turn_started` 尚未落盘）。
+- 日志未闭合且无活跃执行者：视为进程重启遗留，按 `interrupted` 折叠为 `cancelled`，不伪造 `reason`。
+- 已闭合回合：按最后一条 `turn_ended` 的 reason 经 `phaseOf` 映射并保留 `reason`；reason 不合法按 `error` 处理；没有任何回合记录返回 `{phase: 'unknown'}`（查询结果，不是生命周期阶段）。
 
 ## 内存模型
 

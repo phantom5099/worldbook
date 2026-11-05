@@ -3,7 +3,7 @@ import type { Plugin } from '@cordisjs/core'
 import postgres from 'postgres'
 import { z } from 'zod'
 import { ensureSchema } from '@worldbook/db'
-import { MemoryStore, PostgresSessionStore, SessionService } from '@worldbook/session'
+import { PostgresSessionStore, SessionService } from '@worldbook/session'
 import type { SessionStore } from '@worldbook/session'
 import { ContextService } from '@worldbook/context'
 import { EventSink } from '@worldbook/sink'
@@ -52,7 +52,7 @@ export class DbService extends Service<{ url: string }> {
 }
 
 export interface AppConfig {
-  database: { url: string } | { memory: true }
+  database: { url: string } | { store: SessionStore }
   model: { baseUrl: string; apiKey: string; model: string }
   /** 测试/开发注入自定义模型客户端，优先于 model 配置 */
   modelClient?: ModelClient
@@ -118,12 +118,7 @@ const assemble: Plugin.Object<Context, AppConfig> = {
   name: 'worldbook',
   inject: {},
   apply(ctx: Context, config: AppConfig) {
-    let store: SessionStore
-    if ('memory' in config.database) {
-      store = new MemoryStore()
-    } else {
-      store = new PostgresSessionStore(ctx.db!.sql)
-    }
+    const store = 'store' in config.database ? config.database.store : new PostgresSessionStore(ctx.db!.sql)
 
     const registry = new ToolRegistry()
     config.registerTools?.(registry, () => subagent)

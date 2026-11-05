@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { SessionRow, SessionStatus, SessionStore, StoredEvent } from './store.js'
+import type { SessionRow, SessionStatus, SessionStore, StoredEvent } from '../src/store.js'
 
 export class MemoryStore implements SessionStore {
   sessions = new Map<string, SessionRow>()

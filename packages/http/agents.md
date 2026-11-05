@@ -12,7 +12,7 @@ HTTP+SSE 传输层。源码 `src/http.ts`（`index.ts` 仅 re-export），测试
 | `POST /turns` | `{sessionId, input}` 启动回合，202 → `{turnId}`；会话已有活跃 turn 抛 409（TurnAlreadyActiveError 映射）；缺字段 400 |
 | `GET /sessions/:id/stream` | SSE：sink 的 `attach()` 帧序逐帧下发（`data: <json>\n\n`），15s 心跳注释帧；未知会话 404 |
 | `GET /sessions/:id/history` | 已落库事件回放 |
-| `GET /sessions/:id/subagents` | 该会话的直接子代理状态目录 `{sessionId, subagents}`（SubagentService.listChildren）；未知会话 404 |
+| `GET /sessions/:id/subagents` | 该会话的直接子代理回合状态目录 `{sessionId, subagents}`，每项 `{childSessionId, phase, reason?, result?}`（SubagentService.listChildren）；未知会话 404 |
 
 ## 不变量与边界
 

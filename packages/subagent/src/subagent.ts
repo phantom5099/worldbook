@@ -4,9 +4,8 @@ import type { ModelClient } from '@worldbook/model'
 import type { ToolService } from '@worldbook/tool'
 import type { SessionService, SessionEvent, SessionEventType } from '@worldbook/session'
 import type { EventSink } from '@worldbook/sink'
-import type { TurnRegistry, TurnEndReason } from '@worldbook/turn'
-import { foldSubagentStatus } from './status.js'
-import type { SubagentStatus } from './status.js'
+import { foldTurnState } from '@worldbook/turn'
+import type { FoldedTurnState, TurnEndReason, TurnRegistry } from '@worldbook/turn'
 
 export interface SubagentSpec {
   systemPrompt: string
@@ -18,19 +17,17 @@ export interface SubagentResult {
   childSessionId: string
   reason: TurnEndReason
   content: string
-  truncated: boolean
 }
 
-export interface SubagentStatusSnapshot {
-  status: SubagentStatus
+export interface SubagentSnapshot extends FoldedTurnState {
   result?: SubagentResult
 }
 
-export interface SubagentWaitResult extends SubagentStatusSnapshot {
+export interface SubagentWaitResult extends SubagentSnapshot {
   timedOut?: boolean
 }
 
-export interface SubagentInfo extends SubagentStatusSnapshot {
+export interface SubagentInfo extends SubagentSnapshot {
   childSessionId: string
 }
 
@@ -48,7 +45,6 @@ export class SubagentReuseError extends Error {}
 export class SubagentSendScopeError extends Error {}
 
 const DEFAULT_MAX_DEPTH = 2
-const DEFAULT_RESULT_MAX_CHARS = 4000
 const DEFAULT_WAIT_TIMEOUT_MS = 30_000
 
 export interface SubagentDeps {
@@ -61,31 +57,14 @@ export interface SubagentDeps {
   /** 完成/消息到达时唤醒目标会话；seq 为触发事件序号，由装配层接到 AgentService.wake。 */
   wake?: (sessionId: string, seq: number) => void
   maxDepth?: number
-  resultMaxChars?: number
-}
-
-function lastTurnEndReason(events: readonly SessionEvent[]): TurnEndReason | undefined {
-  for (let i = events.length - 1; i >= 0; i -= 1) {
-    const event = events[i]!
-    if (event.type !== 'turn_ended') continue
-    const reason = (event.payload as { reason?: unknown }).reason
-    if (reason === 'done' || reason === 'max_steps' || reason === 'interrupted' || reason === 'error') {
-      return reason
-    }
-  }
-  return undefined
 }
 
 export class SubagentService {
   private readonly maxDepth: number
-  private readonly resultMaxChars: number
   private readonly waiters = new Map<string, Set<() => void>>()
-  /** 本进程内仍在执行的子 loop；复用子会话时日志可能还停在上一轮的终态，靠它判断"新一轮未落盘"。 */
-  private readonly inflight = new Map<string, Promise<void>>()
 
   constructor(private readonly deps: SubagentDeps) {
     this.maxDepth = deps.maxDepth ?? DEFAULT_MAX_DEPTH
-    this.resultMaxChars = deps.resultMaxChars ?? DEFAULT_RESULT_MAX_CHARS
   }
 
   private async appendAndEmit(sessionId: string, type: SessionEventType, payload: unknown): Promise<SessionEvent> {
@@ -170,15 +149,12 @@ export class SubagentService {
           childSessionId,
           reason,
           content: result.content,
-          truncated: result.truncated,
         })
         this.deps.wake?.(parentSessionId, injected.seq)
       })
       .finally(() => {
-        this.inflight.delete(childSessionId)
         this.notify(childSessionId)
       })
-    this.inflight.set(childSessionId, done)
     // 结果落库失败不影响状态：turn_ended 已记录，wait/status 仍可折叠出终态。
     void done.catch(() => {})
     return childSessionId
@@ -228,7 +204,7 @@ export class SubagentService {
     let timer: ReturnType<typeof setTimeout> | undefined
     try {
       const snapshot = await this.inspect(childSessionId)
-      if (snapshot.status !== 'running') return snapshot
+      if (snapshot.phase !== 'running') return snapshot
       const timedOut = await Promise.race([
         woke.then(() => false),
         new Promise<true>((resolve) => {
@@ -245,7 +221,7 @@ export class SubagentService {
     }
   }
 
-  status(childSessionId: string): Promise<SubagentStatusSnapshot> {
+  status(childSessionId: string): Promise<SubagentSnapshot> {
     return this.inspect(childSessionId)
   }
 
@@ -269,7 +245,6 @@ export class SubagentService {
             childSessionId: payload.childSessionId,
             reason: payload.reason ?? 'done',
             content: payload.content,
-            truncated: Boolean(payload.truncated),
           })
         }
       }
@@ -279,24 +254,19 @@ export class SubagentService {
     for (const childSessionId of ids) {
       const snapshot = await this.inspect(childSessionId)
       const result = snapshot.result ?? stored.get(childSessionId)
-      infos.push({ childSessionId, status: snapshot.status, ...(result ? { result } : {}) })
+      infos.push({ childSessionId, ...snapshot, ...(result ? { result } : {}) })
     }
     return infos
   }
 
-  private async inspect(childSessionId: string): Promise<SubagentStatusSnapshot> {
+  private async inspect(childSessionId: string): Promise<SubagentSnapshot> {
     const row = await this.deps.session.getSession(childSessionId)
-    if (!row) return { status: 'unknown' }
+    if (!row) return { phase: 'unknown' }
     const history = await this.deps.session.getHistory(childSessionId)
-    const active =
-      this.inflight.has(childSessionId) ||
-      this.deps.turns.getState(childSessionId)?.phase === 'running'
-    const status = foldSubagentStatus(history, active)
-    // 复用的子会话在上一轮 turn_ended 与新 turn_started 之间日志仍是旧终态，进程内活跃记录优先。
-    if (active && status !== 'running') return { status: 'running' }
-    if (status !== 'completed') return { status }
-    const reason = lastTurnEndReason(history) ?? 'done'
-    return { status, result: this.buildResult(history, childSessionId, reason) }
+    const active = this.deps.turns.getState(childSessionId)?.phase === 'running'
+    const state = foldTurnState(history, active)
+    if (state.phase !== 'completed') return state
+    return { ...state, result: this.buildResult(history, childSessionId, state.reason ?? 'done') }
   }
 
   private buildResult(
@@ -309,9 +279,7 @@ export class SubagentService {
       lastAssistant && typeof lastAssistant.payload === 'object' && lastAssistant.payload !== null && 'text' in lastAssistant.payload
         ? String((lastAssistant.payload as { text: unknown }).text ?? '')
         : ''
-    const truncated = fullText.length > this.resultMaxChars
-    const content = truncated ? fullText.slice(0, this.resultMaxChars) + '……（已截断）' : fullText
-    return { childSessionId, reason, content, truncated }
+    return { childSessionId, reason, content: fullText }
   }
 
   private notify(childSessionId: string): void {
