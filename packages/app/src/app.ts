@@ -59,8 +59,6 @@ export interface AppConfig {
   maxSteps?: number
   /** 配置后 startApp 启动 HTTP+SSE 传输层；缺省不启动（纯装配/测试用） */
   http?: HttpOptions
-  /** 子代理结果/消息到达时是否唤醒空闲会话（默认 true） */
-  wakeOnResult?: boolean
 }
 
 const assemble: Plugin.Object<Context, AppConfig> = {
@@ -92,13 +90,9 @@ const assemble: Plugin.Object<Context, AppConfig> = {
       context,
       model,
       tools,
-      ...(config.wakeOnResult === false
-        ? {}
-        : {
-            wake: (sessionId: string, seq: number) => {
-              void agent.wake(sessionId, seq)
-            },
-          }),
+      wake: (sessionId: string, seq: number) => {
+        void agent.wake(sessionId, seq)
+      },
     })
 
     ctx.set('session', session)
