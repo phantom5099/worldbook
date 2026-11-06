@@ -26,15 +26,38 @@ function projectUserText(payload: unknown): string | undefined {
   return undefined
 }
 
+/** 能与其前序 assistant_message 配对的 tool_result 的 callId 集合；孤儿结果不计入。 */
+function collectResolvedCallIds(events: readonly SessionEvent[]): Set<string> {
+  const declared = new Set<string>()
+  const resolved = new Set<string>()
+  for (const event of events) {
+    if (event.type === 'assistant_message') {
+      const payload = event.payload as { toolCalls?: AssistantToolCall[] }
+      for (const call of payload.toolCalls ?? []) declared.add(call.callId)
+    } else if (event.type === 'tool_result') {
+      const payload = event.payload as { callId?: string }
+      if (payload.callId !== undefined && declared.has(payload.callId)) resolved.add(payload.callId)
+    }
+  }
+  return resolved
+}
+
 export function projectMessages(events: readonly SessionEvent[]): LlmMessage[] {
   const messages: LlmMessage[] = []
   const knownCallIds = new Set<string>()
+  const resolvedCallIds = collectResolvedCallIds(events)
   for (const event of events) {
     if (event.type === 'assistant_message') {
       const payload = event.payload as { text?: string; toolCalls?: AssistantToolCall[] }
       const toolCalls = payload.toolCalls ?? []
       for (const call of toolCalls) knownCallIds.add(call.callId)
       messages.push({ role: 'assistant', content: payload.text ?? '', toolCalls: toolCalls.length > 0 ? toolCalls : undefined })
+      // 缺结果的调用会让接口拒绝整段历史（崩溃/落库失败后常见），紧跟 assistant 补一条 aborted。
+      for (const call of toolCalls) {
+        if (!resolvedCallIds.has(call.callId)) {
+          messages.push({ role: 'tool', toolCallId: call.callId, content: 'aborted' })
+        }
+      }
       continue
     }
     if (event.type === 'tool_result') {
