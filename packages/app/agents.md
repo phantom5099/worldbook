@@ -4,7 +4,7 @@ cordis 装配与进程入口。源码 `src/`：`app.ts`（装配）、`main.ts`�
 
 ## 结构
 
-- `DbService`（cordis Service，name `db`）：复用 db 包的 `DbService` 建连接池，`ensureSchema`（幂等建表），stop 时关闭。
+- `DatabaseService`（cordis Service，name `db`）：复用 db 包的 `DbService` 建连接池，`ensureSchema`（幂等建表），stop 时关闭。
 - `createApp(config)` / `startApp(config)`：`createApp` 先挂 tool 包的 `ToolService` 与 `builtinTools` 插件，再挂装配插件；装配插件把 db/session/context/model/turns/sink/agent/subagent 经 `ctx.set` 注册到 ctx（tools 由 ToolService 自身提供），`inject: {tools: required}`，`database: {url}` 时追加 `{db: required}`；`{store}` 时直接使用调用方注入的 `SessionStore`（测试/无 PG 环境自行构造 MemoryStore）。`TurnRegistry` 以 `sessionTurnIds(session)` 构造，回合编号从会话日志续接。
 - 工具集由 tool 包自注册：内置工具的定义与 `ctx.tools.register` 都在 tool 包的 `builtinTools` 插件内完成；app 只负责挂载插件，不接触注册表。
 - `config.http?: {port, host?}`：startApp 在 ctx.start() 后用 @worldbook/http 的 `createHttpServer` 启动传输层，句柄经 `ctx.set('http', ...)` 暴露（`ctx.http.port()` 取实际端口），`ctx.on('dispose')` 时 stop。

@@ -17,7 +17,7 @@ import type { HttpOptions, HttpServerHandle } from '@worldbook/http'
 
 declare module '@cordisjs/core' {
   interface Context {
-    db?: DbService
+    db?: DatabaseService
     session: SessionService
     context: ContextService
     model: ModelClient
@@ -30,7 +30,7 @@ declare module '@cordisjs/core' {
   }
 }
 
-export class DbService extends Service<{ url: string }> {
+export class DatabaseService extends Service<{ url: string }> {
   static [Service.provide] = 'db'
   sql!: Sql
   private database!: PostgresDb
@@ -116,7 +116,7 @@ export function createApp(config: AppConfig): Context {
   root.plugin(ToolService)
   root.plugin(builtinTools)
   if ('url' in config.database) {
-    root.plugin(DbService, { url: config.database.url })
+    root.plugin(DatabaseService, { url: config.database.url })
     assemble.inject = { tools: { required: true }, db: { required: true } }
   }
   root.plugin(assemble, config)
