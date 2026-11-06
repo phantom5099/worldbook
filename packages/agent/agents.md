@@ -4,7 +4,7 @@ turn/step 两级 ReAct 循环与对外入口。源码 `src/`：`loop.ts`（LoopF
 
 ## 结构
 
-- `createLoop(deps)` → `{ runTurn(sessionId, {claim, signal, input?, onContextRead?}) }`：**不自己 claim**——调用方先 `TurnRegistry.claim` 拿到 claim，loop 收尾时负责 `settle(sessionId, reason)`。缺省 `input` 时不写 `user_message`，由日志中已有事件（如 `subagent_result`）驱动本轮；`turn_started` 前先修复日志中未闭合的孤儿 turn，并把 `claim.turnId` 写入 `turn_started` 载荷。每步读取上下文后通过 `onContextRead(lastSeq)` 报告快照覆盖的事件序号。工具 specs 在 loop 构造时取一次（ToolService 运行期不可变）；system prompt 不经过 context，由 loop 在请求组装时置于消息首位。
+- `createLoop(deps)` → `{ runTurn(sessionId, {claim, signal, input?, onContextRead?}) }`：**不自己 claim**——调用方先 `TurnRegistry.claim` 拿到 claim，loop 收尾时负责 `settle(sessionId, reason)`。缺省 `input` 时不写 `user_message`，由日志中已有事件（如 `subagent_result`）驱动本轮；`turn_started` 前先修复日志中未闭合的孤儿 turn，并把 `claim.turnId` 写入 `turn_started` 载荷。每步读取上下文后通过 `onContextRead(lastSeq)` 报告快照覆盖的事件序号。工具 specs 在每步请求前经 `deps.tools.list()` 重新读取（ToolService 运行期可注册/注销）；system prompt 不经过 context，由 loop 在请求组装时置于消息首位。
 - `sessionTurnIds(session)`：`TurnIdSource` 实现，从会话日志最后一个带数字 `turnId` 的 `turn_started` 恢复回合编号；装配层用它构造 `TurnRegistry`，使重启后的编号续接而非重置。
 - `AgentService.start(sessionId, input)` → `Promise<TurnHandle {turnId, done, interrupt}>`：异步 claim、发 `transition:running` 帧、后台跑 loop；`interrupt()` 走 AbortController，不进状态机。
 - `AgentService.wake(sessionId, seq)` → `Promise<TurnHandle | undefined>`：由 seq 对应的事件驱动一轮、不写输入。会话已有活跃 turn 时返回 `undefined`，并把唤醒挂起：该 turn 后续读取的上下文若始终没覆盖到 seq，收尾后自动补开一轮；已被下一步读到则丢弃，不产生多余回合。

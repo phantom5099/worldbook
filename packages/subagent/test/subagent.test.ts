@@ -5,7 +5,7 @@ import { MemoryStore } from '@worldbook/session/testing'
 import { ContextService } from '@worldbook/context'
 import { EventSink } from '@worldbook/sink'
 import { TurnRegistry } from '@worldbook/turn'
-import { ToolRegistry } from '@worldbook/tool'
+import { createTestToolService } from '@worldbook/tool/testing'
 import { MockModelClient } from '@worldbook/model'
 import { AgentService, sessionTurnIds } from '@worldbook/agent'
 import { SubagentService } from '../src/index.js'
@@ -23,10 +23,9 @@ function setup(opts?: {
   const session = new SessionService(store)
   const context = new ContextService(session)
   const model = new MockModelClient()
-  const registry = new ToolRegistry()
+  const tools = createTestToolService()
   const turns = new TurnRegistry(sessionTurnIds(session))
   const sink = new EventSink()
-  const tools = () => registry.toService()
   const subagent = () =>
     new SubagentService({
       session,
@@ -34,11 +33,11 @@ function setup(opts?: {
       turns,
       context,
       model,
-      tools: tools(),
+      tools,
       maxDepth: opts?.maxDepth,
       wake: opts?.wake,
     })
-  return { store, session, context, model, registry, turns, sink, tools, subagent }
+  return { store, session, context, model, tools, turns, sink, subagent }
 }
 
 describe('subagent spawn', () => {
@@ -136,8 +135,8 @@ describe('subagent spawn', () => {
   })
 
   it('子代理忙碌时 spawn 拒绝（同会话单活跃 turn）', async () => {
-    const { session, model, registry, subagent } = setup()
-    registry.set({
+    const { session, model, tools, subagent } = setup()
+    tools.register({
       name: 'slow',
       description: '慢工具',
       parameters: z.object({}),
@@ -180,12 +179,12 @@ describe('subagent send', () => {
   })
 
   it('运行中的目标会话在 step 边界吸收消息', async () => {
-    const { session, model, registry, subagent, tools } = setup()
+    const { session, model, tools, subagent } = setup()
     const root = await session.createSession()
     const from = await session.createSession({ parentId: root, depth: 1 })
     const target = await session.createSession({ parentId: root, depth: 1 })
 
-    registry.set({
+    tools.register({
       name: 'relay',
       description: '转发消息',
       parameters: z.object({ text: z.string() }),
@@ -202,7 +201,7 @@ describe('subagent send', () => {
       session,
       context: new ContextService(session),
       model,
-      tools: tools(),
+      tools,
       turns: new TurnRegistry(sessionTurnIds(session)),
       sink: new EventSink(),
     })
@@ -289,8 +288,8 @@ describe('subagent 状态与唤醒', () => {
   })
 
   it('复用子会话后立刻 wait 不会返回上一轮结果', async () => {
-    const { session, model, registry, subagent } = setup()
-    registry.set({
+    const { session, model, tools, subagent } = setup()
+    tools.register({
       name: 'slow',
       description: '慢工具',
       parameters: z.object({}),

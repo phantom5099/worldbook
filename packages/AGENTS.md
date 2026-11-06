@@ -63,7 +63,7 @@ http ← subagent（子代理状态端点）
 | `turn` | turn 状态机：claim（异步、按 session 互斥）、settle 幂等唯一终态、getState 快照；回合号由持久化日志续接 |
 | `sink` | 会话级有序帧队列：transition / event / delta；流式帧不落库 |
 | `model` | ModelClient 接口；Mock 实现（测试）与 OpenAI 官方 SDK 实现（baseURL 覆盖）；供应商预置表 |
-| `tool` | ToolDefinition（Zod 参数必选、输出 schema 可选）；只读 ToolService；executeBatch 统一错误兜底 |
+| `tool` | ToolDefinition（Zod 参数必选、输出 schema 可选）；`ToolService`（cordis 服务 `tools`，`register` 返回 disposer）；`builtinTools` 插件自注册内置工具；`list()` 按当前注册投影 specs；executeBatch 统一错误兜底 |
 | `context` | 事件日志 → LLM 消息投影（纯函数，快照附带覆盖的 seq）；压缩不在此版 |
 | `agent` | LoopFactory 纯函数（turn/step 两级循环）；AgentService.start / wake 入口（活跃 turn 唤醒挂起、收尾按需补开）；孤儿 turn 修复 |
 | `subagent` | spawn（可选 sessionId 复用子会话）、send（同根互通信）、status/wait 日志折叠、listChildren；结果回注与按事件 seq 唤醒父会话 |
@@ -84,14 +84,14 @@ http ← subagent（子代理状态端点）
 | 改流式帧队列 | `packages/sink/src/sink.ts` |
 | 改 LLM 调用 / SDK 适配 | `packages/model/src/openai.ts` |
 | 改供应商预置（baseUrl/模型/key 变量） | `packages/model/src/presets.ts` |
-| 改工具定义 / 执行 | `packages/tool/src/`（`types.ts`、`service.ts`） |
+| 改工具定义 / 执行 | `packages/tool/src/tool.ts`（定义与 ToolService）、`packages/tool/src/tools/` |
 | 改上下文投影 | `packages/context/src/context.ts` |
 | 改子代理 | `packages/subagent/src/` |
 | 改 HTTP 路由 / SSE 端点 | `packages/http/src/http.ts` |
 | 改表结构 | `packages/db/migrations/`（新增版本文件）+ `packages/db/src/migrate.ts` 登记 `MIGRATIONS` |
 | 改装配 / 依赖注入 | `packages/app/src/app.ts` |
 | 改环境变量 / 灰度开关 / 进程入口 | `packages/app/src/main.ts` |
-| 新增工具给 agent 用 | 定义 `ToolDefinition`，在装配期（`app.ts`）注册进 `ToolService` |
+| 新增工具给 agent 用 | 在 `packages/tool/src/tools/<域>/` 下按工具新建文件定义 `ToolDefinition`，在 `packages/tool/src/tools/index.ts` 的 `builtinTools` 插件里 `ctx.tools.register`（需要业务服务时在执行期从 ctx 解析） |
 | 新增跨包依赖 | 该包 `package.json` 加 `workspace:*`，并更新两侧 `agents.md` 的依赖方向 |
 
 ## 跨包不变量（改代码前先确认没有破坏）
@@ -100,4 +100,4 @@ http ← subagent（子代理状态端点）
 2. seq 由 SessionService 在单会话内串行分配（依赖 turn 的 claim 互斥），DB 主键兜底。
 3. `settle` 是唯一终态出口且幂等；中断经 `TurnHandle.interrupt()` → AbortController → loop 收尾 → `settle('interrupted')`。
 4. loop 工厂是纯函数，不持有会话、不感知传输协议；模块依赖经构造参数注入。
-5. ToolService 是只读视图：注册只发生在装配期（app 包构建快照），运行期工具集不可变。
+5. ToolService 的注册表运行期可变：内置工具由 tool 包的 `builtinTools` 插件经 `ctx.tools.register` 注册（注册随插件作用域销毁），loop 每步重新读取 specs；装配层只声明对 `tools` 服务的依赖。

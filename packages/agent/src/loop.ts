@@ -43,7 +43,6 @@ const DEFAULT_MAX_STEPS = 16
 
 export function createLoop(deps: LoopDeps) {
   const maxSteps = deps.maxSteps ?? DEFAULT_MAX_STEPS
-  const toolSpecs = deps.tools.list()
 
   async function runTurn(sessionId: string, opts: RunTurnOptions): Promise<TurnEndReason> {
     const { claim, signal, input } = opts
@@ -121,6 +120,7 @@ export function createLoop(deps: LoopDeps) {
     let text = ''
     const calls: ToolCall[] = []
     let usage: ModelUsage | undefined
+    const toolSpecs = deps.tools.list()
 
     for await (const ev of deps.model.completeStream({ messages, tools: toolSpecs, signal })) {
       if (ev.type === 'delta') {

@@ -30,7 +30,7 @@
 - 结果与消息全部经事件日志交付，无跨会话回调；子 loop 的 claim/settle 与主 loop 共用同一 TurnRegistry。
 - 完成推送是进程内加速：`wait` 通过 waiter 集合即时返回；日志折叠对重启后的等待同样成立。
 - 唤醒携带触发事件 seq：目标会话有活跃 turn 时 `AgentService` 挂起唤醒，该 turn 收尾前已读到该事件则丢弃，否则收尾后补开一轮，收尾窗口不丢唤醒。
-- 工具化暴露（spawn/send_message/wait_subagent 三个 ToolDefinition）在 app 装配层注册，见 app 模块。
+- 工具化暴露（spawn/send_message/wait_subagent 三个 ToolDefinition）由 tool 包的 `builtinTools` 插件经 `ctx.tools.register` 注册，工具执行期从 ctx 解析本服务。
 
 ## 依赖
 

@@ -1,9 +1,6 @@
 import { PROVIDER_PRESETS } from '@worldbook/model'
 import type { ProviderPresetName } from '@worldbook/model'
 import { startApp } from './app.js'
-import { registerSubagentTools } from './app.js'
-import type { ToolRegistry } from '@worldbook/tool'
-import type { SubagentService } from '@worldbook/subagent'
 
 /** 灰度开关：APP_ENV 选择 .env.<APP_ENV>；同一套装配代码，环境差异全部收敛在 env 文件里。 */
 function loadEnv(): void {
@@ -51,9 +48,6 @@ async function main() {
     database: { url: databaseUrl },
     model: { baseUrl, apiKey, model: modelName },
     http: { port },
-    registerTools: (registry: ToolRegistry, resolve: () => SubagentService) => {
-      registerSubagentTools(registry, resolve)
-    },
   })
 
   console.log(

@@ -16,7 +16,6 @@
     "@worldbook/sink": "workspace:*",
     "@worldbook/subagent": "workspace:*",
     "@worldbook/tool": "workspace:*",
-    "@worldbook/turn": "workspace:*",
-    "zod": "^4.6.7"
+    "@worldbook/turn": "workspace:*"
   }
 }

@@ -1,23 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import { MockModelClient } from '@worldbook/model'
 import { MemoryStore } from '@worldbook/session/testing'
-import type { ToolRegistry } from '@worldbook/tool'
-import { createApp, registerSubagentTools } from '../src/index.js'
-import type { SubagentService } from '@worldbook/subagent'
+import { createApp } from '../src/index.js'
 
 function makeConfig(model: MockModelClient) {
   return {
     database: { store: new MemoryStore() },
     model: { baseUrl: 'unused', apiKey: 'unused', model: 'unused' },
     modelClient: model,
-    registerTools: (registry: ToolRegistry, resolve: () => SubagentService) => {
-      registerSubagentTools(registry, resolve)
-    },
   }
 }
 
 describe('cordis 装配', () => {
-  it('装配后 ctx 提供全部服务，且工具快照生效', async () => {
+  it('装配后 ctx 提供全部服务，且内置工具已注册', async () => {
     const model = new MockModelClient()
     model.enqueue({ text: '你好' })
     const ctx = createApp(makeConfig(model))

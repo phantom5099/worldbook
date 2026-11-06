@@ -1,4 +1,6 @@
 import { z } from 'zod'
+import { Service } from '@cordisjs/core'
+import type { Context } from '@cordisjs/core'
 
 interface ToolRunContext {
   sessionId: string
@@ -26,7 +28,7 @@ interface ToolResult<R = unknown> {
   display?: string
 }
 
-interface ToolDefinition<A = unknown, R = unknown> {
+export interface ToolDefinition<A = unknown, R = unknown> {
   name: string
   description: string
   parameters: z.ZodType<A>
@@ -40,31 +42,35 @@ export interface ModelToolSpec {
   parameters: unknown
 }
 
-export interface ToolService {
-  list(scope?: string): ModelToolSpec[]
-  executeBatch(calls: readonly ToolCall[], ctx: ToolRunContext): Promise<ToolCallResult[]>
+declare module '@cordisjs/core' {
+  interface Context {
+    tools: ToolService
+  }
 }
 
-export class ToolRegistry {
-  private defs = new Map<string, ToolDefinition>()
+/** 工具注册表与执行入口；工具插件经 `register` 自我注册，注册随调用方作用域销毁。 */
+export class ToolService extends Service {
+  static [Service.provide] = 'tools'
 
-  set(def: ToolDefinition): void {
+  private readonly defs = new Map<string, ToolDefinition>()
+
+  constructor(ctx: Context) {
+    super(ctx)
+  }
+
+  /** 注册单个工具；返回的 disposer 只移除本次注册。 */
+  register(def: ToolDefinition): () => void {
     if (this.defs.has(def.name)) {
       throw new Error(`tool ${def.name} already registered`)
     }
     this.defs.set(def.name, def)
+    return () => {
+      if (this.defs.get(def.name) === def) this.defs.delete(def.name)
+    }
   }
 
-  toService(): ToolService {
-    return new DefaultToolService(new Map(this.defs))
-  }
-}
-
-class DefaultToolService implements ToolService {
-  constructor(private readonly defs: ReadonlyMap<string, ToolDefinition>) {}
-
-  list(_scope?: string): ModelToolSpec[] {
-    void _scope
+  /** 按当前注册投影模型可见的 specs；每次请求重新计算。 */
+  list(): ModelToolSpec[] {
     return [...this.defs.values()].map((def) => ({
       name: def.name,
       description: def.description,

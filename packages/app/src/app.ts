@@ -1,6 +1,5 @@
 import { Context, Service } from '@cordisjs/core'
 import type { Plugin } from '@cordisjs/core'
-import { z } from 'zod'
 import { DbService as PostgresDb, ensureSchema } from '@worldbook/db'
 import type { Sql } from '@worldbook/db'
 import { PostgresSessionStore, SessionService } from '@worldbook/session'
@@ -8,8 +7,7 @@ import type { SessionStore } from '@worldbook/session'
 import { ContextService } from '@worldbook/context'
 import { EventSink } from '@worldbook/sink'
 import { TurnRegistry } from '@worldbook/turn'
-import { ToolRegistry } from '@worldbook/tool'
-import type { ToolService } from '@worldbook/tool'
+import { ToolService, builtinTools } from '@worldbook/tool'
 import { OpenAICompatClient } from '@worldbook/model'
 import type { ModelClient } from '@worldbook/model'
 import { AgentService, sessionTurnIds } from '@worldbook/agent'
@@ -23,7 +21,6 @@ declare module '@cordisjs/core' {
     session: SessionService
     context: ContextService
     model: ModelClient
-    tools: ToolService
     turns: TurnRegistry
     sink: EventSink
     agent: AgentService
@@ -64,71 +61,18 @@ export interface AppConfig {
   http?: HttpOptions
   /** 子代理结果/消息到达时是否唤醒空闲会话（默认 true） */
   wakeOnResult?: boolean
-  /** 装配期工具注册；子代理工具经 registerSubagentTools 注册，resolve 延迟到执行期 */
-  registerTools?: (registry: ToolRegistry, resolve: () => SubagentService) => void
-}
-
-/** 子代理能力以工具形式暴露给 loop；resolve 延迟到执行期以拿到装配完成的服务。 */
-export function registerSubagentTools(registry: ToolRegistry, resolve: () => SubagentService): void {
-  registry.set({
-    name: 'spawn',
-    description:
-      '启动一个子智能体执行任务（异步，立即返回子会话 id）。完成后结果自动回注到当前会话，空闲时会被唤醒处理。传 sessionId 可复用既有子代理会话续跑。',
-    parameters: z.object({
-      task: z.string().describe('交给子智能体的任务描述'),
-      systemPrompt: z.string().describe('子智能体的系统提示词'),
-      sessionId: z.string().optional().describe('复用的子代理会话 id'),
-    }),
-    execute: async (args: { task: string; systemPrompt: string; sessionId?: string }, ctx) => {
-      const childId = await resolve().spawn(
-        ctx.sessionId,
-        { systemPrompt: args.systemPrompt, task: args.task },
-        { sessionId: args.sessionId },
-      )
-      return { result: { childSessionId: childId } }
-    },
-  })
-
-  registry.set({
-    name: 'send_message',
-    description: '向同一根会话下的其他智能体投递消息；目标运行中在下一步吸收，空闲时会被唤醒。',
-    parameters: z.object({
-      to: z.string().describe('目标会话 id'),
-      content: z.string().describe('消息内容'),
-    }),
-    execute: async (args: { to: string; content: string }, ctx) => {
-      await resolve().send(ctx.sessionId, args.to, args.content)
-      return { result: 'sent' }
-    },
-  })
-
-  registry.set({
-    name: 'wait_subagent',
-    description: '等待指定子智能体结束；超时返回当前状态（timedOut）。',
-    parameters: z.object({
-      sessionId: z.string().describe('spawn 返回的子会话 id'),
-      timeoutMs: z.number().int().positive().optional().describe('超时毫秒数，默认 30000'),
-    }),
-    execute: async (args: { sessionId: string; timeoutMs?: number }) => {
-      const result = await resolve().wait(args.sessionId, { timeoutMs: args.timeoutMs })
-      return { result }
-    },
-  })
 }
 
 const assemble: Plugin.Object<Context, AppConfig> = {
   name: 'worldbook',
-  inject: {},
+  inject: { tools: { required: true } },
   apply(ctx: Context, config: AppConfig) {
     const store = 'store' in config.database ? config.database.store : new PostgresSessionStore(ctx.db!.sql)
-
-    const registry = new ToolRegistry()
-    config.registerTools?.(registry, () => subagent)
 
     const session = new SessionService(store)
     const context = new ContextService(session)
     const model = config.modelClient ?? new OpenAICompatClient(config.model)
-    const tools = registry.toService()
+    const tools = ctx.tools
     const turns = new TurnRegistry(sessionTurnIds(session))
     const sink = new EventSink()
     const agent = new AgentService({
@@ -160,7 +104,6 @@ const assemble: Plugin.Object<Context, AppConfig> = {
     ctx.set('session', session)
     ctx.set('context', context)
     ctx.set('model', model)
-    ctx.set('tools', tools)
     ctx.set('turns', turns)
     ctx.set('sink', sink)
     ctx.set('agent', agent)
@@ -170,9 +113,11 @@ const assemble: Plugin.Object<Context, AppConfig> = {
 
 export function createApp(config: AppConfig): Context {
   const root = new Context()
+  root.plugin(ToolService)
+  root.plugin(builtinTools)
   if ('url' in config.database) {
     root.plugin(DbService, { url: config.database.url })
-    assemble.inject = { db: { required: true } }
+    assemble.inject = { tools: { required: true }, db: { required: true } }
   }
   root.plugin(assemble, config)
   return root

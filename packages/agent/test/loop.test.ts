@@ -5,7 +5,7 @@ import { MemoryStore } from '@worldbook/session/testing'
 import { ContextService } from '@worldbook/context'
 import { EventSink } from '@worldbook/sink'
 import { TurnRegistry, TurnAlreadyActiveError } from '@worldbook/turn'
-import { ToolRegistry } from '@worldbook/tool'
+import { createTestToolService } from '@worldbook/tool/testing'
 import { MockModelClient } from '@worldbook/model'
 import { AgentService, sessionTurnIds } from '../src/index.js'
 import type { SinkFrame } from '@worldbook/sink'
@@ -16,21 +16,20 @@ function setup(opts?: { maxSteps?: number }) {
   const session = new SessionService(store)
   const context = new ContextService(session)
   const model = new MockModelClient()
-  const registry = new ToolRegistry()
+  const tools = createTestToolService()
   const turns = new TurnRegistry(sessionTurnIds(session))
   const sink = new EventSink()
-  // AgentService 持有 ToolService 快照，必须在工具注册完成后再构造
   const makeAgent = () =>
     new AgentService({
       session,
       context,
       model,
-      tools: registry.toService(),
+      tools,
       turns,
       sink,
       maxSteps: opts?.maxSteps,
     })
-  return { store, session, context, model, registry, turns, sink, makeAgent }
+  return { store, session, context, model, tools, turns, sink, makeAgent }
 }
 
 async function collect(sink: EventSink, sessionId: string): Promise<SinkFrame[]> {
@@ -91,8 +90,8 @@ describe('agent loop', () => {
   })
 
   it('工具往返：tool_call/tool_result 成对落库，结果进入下一轮上下文', async () => {
-    const { session, model, registry, makeAgent } = setup()
-    registry.set({
+    const { session, model, tools, makeAgent } = setup()
+    tools.register({
       name: 'echo',
       description: '回声',
       parameters: z.object({ text: z.string() }),
@@ -137,8 +136,8 @@ describe('agent loop', () => {
   })
 
   it('工具失败不中止回合：error 结果回灌，模型继续', async () => {
-    const { session, model, registry, makeAgent } = setup()
-    registry.set({
+    const { session, model, tools, makeAgent } = setup()
+    tools.register({
       name: 'boom',
       description: '总是失败',
       parameters: z.object({}),
@@ -158,8 +157,8 @@ describe('agent loop', () => {
   })
 
   it('maxSteps：步数耗尽返回 max_steps', async () => {
-    const { session, model, registry, makeAgent } = setup({ maxSteps: 2 })
-    registry.set({
+    const { session, model, tools, makeAgent } = setup({ maxSteps: 2 })
+    tools.register({
       name: 'noop',
       description: '空',
       parameters: z.object({}),
@@ -191,7 +190,7 @@ describe('agent loop', () => {
       session,
       context: new ContextService(session),
       model: hanging,
-      tools: new ToolRegistry().toService(),
+      tools: createTestToolService(),
       turns,
       sink,
     })
@@ -292,7 +291,7 @@ describe('agent loop', () => {
       session,
       context: new ContextService(session),
       model: gated,
-      tools: new ToolRegistry().toService(),
+      tools: createTestToolService(),
       turns,
       sink,
     })
@@ -327,10 +326,10 @@ describe('agent loop', () => {
   })
 
   it('活跃回合已在下一步读到的事件不会补开新轮', async () => {
-    const { session, model, registry, turns, makeAgent } = setup()
+    const { session, model, tools, turns, makeAgent } = setup()
     const toolStarted = deferred()
     const releaseTool = deferred()
-    registry.set({
+    tools.register({
       name: 'slow',
       description: '慢工具',
       parameters: z.object({}),

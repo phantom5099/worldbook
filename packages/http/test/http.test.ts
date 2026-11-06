@@ -6,7 +6,7 @@ import { EventSink } from '@worldbook/sink'
 import { SessionService } from '@worldbook/session'
 import { MemoryStore } from '@worldbook/session/testing'
 import { SubagentService } from '@worldbook/subagent'
-import { ToolRegistry } from '@worldbook/tool'
+import { createTestToolService } from '@worldbook/tool/testing'
 import { TurnRegistry } from '@worldbook/turn'
 import { createHttpServer } from '../src/http.js'
 import type { SinkFrame } from '@worldbook/sink'
@@ -15,7 +15,7 @@ const store = new MemoryStore()
 const session = new SessionService(store)
 const sink = new EventSink()
 const turns = new TurnRegistry(sessionTurnIds(session))
-const tools = new ToolRegistry().toService()
+const tools = createTestToolService()
 const model = new MockModelClient()
 const agent = new AgentService({
   session,
