@@ -16,5 +16,5 @@
 
 - 每会话所有生产方向同一队列 emit，消费者看到的帧序与 emit 序一致。
 - 无消费者时 emit 静默丢弃：event 帧可从 DB 重放，delta 本就不可重放。
-- 只播发订阅之后的帧；消费者 break（for-await return）即解除订阅：`return()` 会 close 该队列并释放挂起的 waiter（挂起中的 `next()` 立即 done），HTTP 层断连清理依赖此语义。
+- 只播发订阅之后的帧；消费者 break（for-await return）即解除订阅：`return()` 走队列唯一的 `release()` 出口——结束迭代、清空未读 buffer、释放挂起的 waiter（挂起中的 `next()` 立即 done）并从 `consumers` 注销；可重复调用。HTTP 层的正常结束、断连与异常统一依赖此语义。
 - cordis `ctx.emit` 不承担会话流（方案 D-7），本模块是有序流的唯一通道。

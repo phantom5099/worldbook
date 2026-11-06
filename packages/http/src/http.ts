@@ -92,6 +92,7 @@ async function streamSession(
     }
   } finally {
     clearInterval(heartbeat)
+    await iterator.return?.()
   }
   if (!closed) res.end()
 }

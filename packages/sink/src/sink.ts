@@ -10,6 +10,9 @@ class FrameQueue {
   private buffer: SinkFrame[] = []
   private waiters: Array<() => void> = []
   private closed = false
+  private released = false
+
+  constructor(private readonly onRelease: () => void) {}
 
   push(frame: SinkFrame): void {
     this.buffer.push(frame)
@@ -19,6 +22,15 @@ class FrameQueue {
   close(): void {
     this.closed = true
     while (this.waiters.length > 0) this.waiters.shift()?.()
+  }
+
+  /** 退订的唯一出口：结束迭代、丢弃未读帧并解除注册；可重复调用。 */
+  release(): void {
+    if (this.released) return
+    this.released = true
+    this.close()
+    this.buffer.length = 0
+    this.onRelease()
   }
 
   async next(): Promise<IteratorResult<SinkFrame>> {
@@ -36,21 +48,19 @@ export class EventSink {
   private consumers = new Map<SessionId, Set<FrameQueue>>()
 
   attach(sessionId: SessionId): AsyncIterable<SinkFrame> {
-    const queue = new FrameQueue()
+    const queue = new FrameQueue(() => this.detach(sessionId, queue))
     let set = this.consumers.get(sessionId)
     if (!set) {
       set = new Set()
       this.consumers.set(sessionId, set)
     }
     set.add(queue)
-    const sink = this
     return {
       [Symbol.asyncIterator]() {
         return {
           next: () => queue.next(),
           return: async () => {
-            queue.close()
-            sink.detach(sessionId, queue)
+            queue.release()
             return { value: undefined, done: true }
           },
         }
