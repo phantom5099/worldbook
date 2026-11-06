@@ -12,10 +12,6 @@ type LlmMessage =
   | { role: 'assistant'; content: string; toolCalls?: AssistantToolCall[] }
   | { role: 'tool'; toolCallId: string; content: string }
 
-interface ContextOptions {
-  system?: string
-}
-
 export interface ContextSnapshot {
   messages: LlmMessage[]
   /** 快照覆盖的最后一条事件 seq；空会话为 0。 */
@@ -30,14 +26,8 @@ function projectUserText(payload: unknown): string | undefined {
   return undefined
 }
 
-export function projectMessages(
-  events: readonly SessionEvent[],
-  opts: ContextOptions = {},
-): LlmMessage[] {
+export function projectMessages(events: readonly SessionEvent[]): LlmMessage[] {
   const messages: LlmMessage[] = []
-  if (opts.system !== undefined) {
-    messages.push({ role: 'system', content: opts.system })
-  }
   const knownCallIds = new Set<string>()
   for (const event of events) {
     if (event.type === 'assistant_message') {
@@ -81,18 +71,11 @@ export function projectMessages(
 export class ContextService {
   constructor(private readonly session: SessionService) {}
 
-  async getContextSnapshot(
-    sessionId: SessionId,
-    opts: ContextOptions = {},
-  ): Promise<ContextSnapshot> {
+  async getContextSnapshot(sessionId: SessionId): Promise<ContextSnapshot> {
     const events = await this.session.getHistory(sessionId)
     return {
-      messages: projectMessages(events, opts),
+      messages: projectMessages(events),
       lastSeq: events.at(-1)?.seq ?? 0,
     }
-  }
-
-  async getContext(sessionId: SessionId, opts: ContextOptions = {}): Promise<LlmMessage[]> {
-    return (await this.getContextSnapshot(sessionId, opts)).messages
   }
 }

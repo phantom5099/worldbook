@@ -20,11 +20,6 @@ describe('projectMessages', () => {
     ])
   })
 
-  it('system 选项置于消息序列首位', () => {
-    const messages = projectMessages([event('user_message', { text: 'a' })], { system: '你是裁判' })
-    expect(messages[0]).toEqual({ role: 'system', content: '你是裁判' })
-  })
-
   it('assistant 的 toolCalls 与 tool_result 配对生成 tool 消息', () => {
     const toolCalls: AssistantToolCall[] = [{ callId: 'c1', name: 'roll', args: { sides: 6 } }]
     const messages = projectMessages([

@@ -10,7 +10,7 @@ import type { TurnRegistry, TurnClaim, TurnEndReason, TurnId } from '@worldbook/
 export type { TurnEndReason }
 
 export interface ContextView {
-  getContextSnapshot(sessionId: string, opts?: { system?: string }): Promise<ContextSnapshot>
+  getContextSnapshot(sessionId: string): Promise<ContextSnapshot>
 }
 
 export interface LoopDeps {
@@ -43,6 +43,7 @@ const DEFAULT_MAX_STEPS = 16
 
 export function createLoop(deps: LoopDeps) {
   const maxSteps = deps.maxSteps ?? DEFAULT_MAX_STEPS
+  const toolSpecs = deps.tools.list()
 
   async function runTurn(sessionId: string, opts: RunTurnOptions): Promise<TurnEndReason> {
     const { claim, signal, input } = opts
@@ -111,10 +112,11 @@ export function createLoop(deps: LoopDeps) {
     emitEvent: (type: SessionEventType, payload: unknown) => Promise<SessionEvent>,
     onContextRead?: (lastSeq: number) => void,
   ): Promise<TurnEndReason | undefined> {
-    const snapshot = await deps.context.getContextSnapshot(sessionId, { system: deps.system })
+    const snapshot = await deps.context.getContextSnapshot(sessionId)
     onContextRead?.(snapshot.lastSeq)
-    const messages = snapshot.messages
-    const toolSpecs = deps.tools.list()
+    const messages = deps.system === undefined
+      ? snapshot.messages
+      : [{ role: 'system' as const, content: deps.system }, ...snapshot.messages]
 
     let text = ''
     const calls: ToolCall[] = []
