@@ -5,10 +5,10 @@ cordis 装配与进程入口。源码 `src/`：`app.ts`（装配）、`main.ts`�
 ## 结构
 
 - `DatabaseService`（cordis Service，name `db`）：复用 db 包的 `DbService` 建连接池，`ensureSchema`（幂等建表），stop 时关闭。
-- `createApp(config)` / `startApp(config)`：`createApp` 先挂 tool 包的 `ToolService` 与 `builtinTools` 插件，再挂装配插件；装配插件把 db/session/context/model/turns/sink/agent/subagent 经 `ctx.set` 注册到 ctx（tools 由 ToolService 自身提供），`inject: {tools: required}`，`database: {url}` 时追加 `{db: required}`；`{store}` 时直接使用调用方注入的 `SessionStore`（测试/无 PG 环境自行构造 MemoryStore）。`TurnRegistry` 以 `sessionTurnIds(session)` 构造，回合编号从会话日志续接。
+- `createApp(config)` / `startApp(config)`：`createApp` 先挂 tool 包的 `ToolService` 与 `builtinTools` 插件，再挂装配插件；装配插件由 `createAssemble(withDb)` **按配置构造**（`database: {url}` 时 `inject` 追加 `{db: required}`，`{store}` 时只注入 `tools`），不再改写模块级插件对象——同一进程内先后装配不同 database 形态的 app 互不影响。装配插件把 db/session/context/model/turns/sink/agent/subagent 经 `ctx.set` 注册到 ctx（tools 由 ToolService 自身提供）；`{store}` 时直接使用调用方注入的 `SessionStore`（测试/无 PG 环境自行构造 MemoryStore）。`TurnRegistry` 以 `sessionTurnIds(session)` 构造，回合编号从会话日志续接。
 - 工具集由 tool 包自注册：内置工具的定义与 `ctx.tools.register` 都在 tool 包的 `builtinTools` 插件内完成；app 只负责挂载插件，不接触注册表。
 - `config.http?: {port, host?}`：startApp 在 ctx.start() 后用 @worldbook/http 的 `createHttpServer` 启动传输层，句柄经 `ctx.set('http', ...)` 暴露（`ctx.http.port()` 取实际端口），`ctx.on('dispose')` 时 stop。
-- 装配时把 SubagentService 的 `wake(sessionId, seq)` 回调接到 `AgentService.wake`，子代理结果/消息到达时以对应事件 seq 唤醒会话（活跃 turn 期间挂起，收尾时未被读到则补开一轮）。
+- 装配时把 SubagentService 的 `wake(sessionId, seq)` 回调接到 `AgentService.wake`，子代理结果/消息到达时以对应事件 seq 唤醒会话（活跃 turn 期间挂起，收尾时未被读到则补开一轮）。`wake` 在装配层是 `void` 契约：返回的 promise 由装配层 `catch` 后记录日志，subagent 侧不持有悬空 promise。
 - ctx 服务类型经 `declare module '@cordisjs/core'` 的 `interface Context` 合并提供（cordis 3.18.1：Service 子类用 `static [Service.provide]` 命名、`ctx.plugin` 注册、ready 后 `ctx.set` 暴露）。
 
 ## 环境与灰度开关

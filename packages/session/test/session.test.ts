@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { SessionService } from '../src/index.js'
 import { MemoryStore } from '../testing/memory-store.js'
 import type { SessionEvent, SessionEventType, SessionId } from '../src/types.js'
@@ -73,6 +73,21 @@ describe('SessionService.append', () => {
     expect(await store.maxSeq(id)).toBe(0)
   })
 
+  it('冷会话并发 append 不分配重复 seq', async () => {
+    const store = new FakeStore()
+    const id = await store.createSession({})
+    const service = new SessionService(store)
+
+    const [first, second] = await Promise.all([
+      service.append(id, [{ type: 'turn_started', payload: {} }]),
+      service.append(id, [{ type: 'subagent_message', payload: { content: '插话' } }]),
+    ])
+    expect([first[0]!.seq, second[0]!.seq]).toEqual([1, 2])
+
+    const history = await service.getHistory(id)
+    expect(history.map((event) => event.seq)).toEqual([1, 2])
+  })
+
   it('append 后历史按 seq 升序返回，afterSeq 与 limit 生效', async () => {
     const store = new FakeStore()
     const id = await store.createSession({})
@@ -102,13 +117,16 @@ describe('SessionService 会话生命周期', () => {
     expect(await service.getSession('missing')).toBeUndefined()
   })
 
-  it('createdAt 由 service 统一赋值，store 收到 Date', async () => {
+  it('同一批 append 的事件共享一个 createdAt', async () => {
     const store = new FakeStore()
-    const insertSpy = vi.spyOn(store, 'insertEvents')
     const id = await store.createSession({})
     const service = new SessionService(store)
-    await service.append(id, [{ type: 'user_message', payload: 'x' }])
-    const stored = insertSpy.mock.calls[0]![1]
-    expect(stored[0]!.createdAt).toBeInstanceOf(Date)
+    await service.append(id, [
+      { type: 'user_message', payload: 'x' },
+      { type: 'assistant_message', payload: 'y' },
+    ])
+    const [first, second] = await service.getHistory(id)
+    expect(first!.createdAt).toBeInstanceOf(Date)
+    expect(first!.createdAt.getTime()).toBe(second!.createdAt.getTime())
   })
 })

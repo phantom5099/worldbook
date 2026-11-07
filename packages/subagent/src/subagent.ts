@@ -6,7 +6,7 @@ import type { SessionService, SessionEvent, SessionEventType } from '@worldbook/
 import type { EventSink } from '@worldbook/sink'
 import { appendAndEmit } from '@worldbook/sink'
 import { foldTurnState } from '@worldbook/turn'
-import type { FoldedTurnState, TurnEndReason, TurnRegistry } from '@worldbook/turn'
+import type { FoldedTurnState, TurnClaim, TurnEndReason, TurnRegistry } from '@worldbook/turn'
 
 interface SubagentSpec {
   systemPrompt: string
@@ -89,6 +89,7 @@ export class SubagentService {
     }
 
     let childSessionId: string
+    let created = false
     if (opts?.sessionId) {
       const child = await this.deps.session.getSession(opts.sessionId)
       if (!child) throw new SubagentReuseError(`session ${opts.sessionId} not found`)
@@ -103,9 +104,16 @@ export class SubagentService {
         parentId: parentSessionId,
         depth,
       })
+      created = true
     }
 
-    const claim = await this.deps.turns.claim(childSessionId)
+    let claim: TurnClaim
+    try {
+      claim = await this.deps.turns.claim(childSessionId)
+    } catch (err) {
+      if (created) await this.markFailed(childSessionId)
+      throw err
+    }
     try {
       await this.appendAndEmit(parentSessionId, 'subagent_spawned', {
         childSessionId,
@@ -116,6 +124,7 @@ export class SubagentService {
       })
     } catch (err) {
       this.deps.turns.settle(childSessionId, 'error')
+      await this.markFailed(childSessionId)
       throw err
     }
 
@@ -149,9 +158,20 @@ export class SubagentService {
       .finally(() => {
         this.notify(childSessionId)
       })
-    // 结果落库失败不影响状态：turn_ended 已记录，wait/status 仍可折叠出终态。
-    void done.catch(() => {})
+    // 结果回注失败不改变子会话状态：turn_ended 已记录，wait/status 仍可折叠出终态；此处只记录，不重试。
+    void done.catch((err: unknown) => {
+      console.error(`[subagent] 子会话 ${childSessionId} 结果回注失败`, err)
+    })
     return childSessionId
+  }
+
+  /** 新建却无法进入执行的子会话标记为 failed，避免留下没有事件的 active 会话。 */
+  private async markFailed(sessionId: string): Promise<void> {
+    try {
+      await this.deps.session.setStatus(sessionId, 'failed')
+    } catch (err) {
+      console.error(`[subagent] 会话 ${sessionId} 标记 failed 失败`, err)
+    }
   }
 
   /** mailbox 投递：from 与 to 必须在同一根会话下；目标运行中下一步吸收，空闲时按需唤醒。 */

@@ -8,8 +8,8 @@ HTTP+SSE 传输层。源码 `src/http.ts`（`index.ts` 仅 re-export），测试
 
 | 路由 | 行为 |
 |---|---|
-| `POST /sessions` | 创建会话（可选 `{meta}`），201 → `{sessionId}` |
-| `POST /turns` | `{sessionId, input}` 启动回合，202 → `{turnId}`；会话已有活跃 turn 抛 409（TurnAlreadyActiveError 映射）；缺字段 400 |
+| `POST /sessions` | 创建根会话（可选 `{meta}`）；`meta` 必须是普通对象且不得含 `parentId` / `depth`（父子关系只由子代理服务建立），否则 400；201 → `{sessionId}` |
+| `POST /turns` | `{sessionId, input}` 启动回合，202 → `{turnId}`；未知会话 404，会话已有活跃 turn 抛 409（TurnAlreadyActiveError 映射）；缺字段 400 |
 | `GET /sessions/:id/stream` | SSE：sink 的 `attach()` 帧序逐帧下发（`data: <json>\n\n`），15s 心跳注释帧；未知会话 404 |
 | `GET /sessions/:id/history` | 已落库事件回放 |
 | `GET /sessions/:id/subagents` | 该会话的直接子代理回合状态目录 `{sessionId, subagents}`，每项 `{childSessionId, phase, reason?, result?}`（SubagentService.listChildren）；未知会话 404 |

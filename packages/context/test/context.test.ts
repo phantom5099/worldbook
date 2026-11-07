@@ -103,14 +103,14 @@ describe('projectMessages', () => {
     expect(messages).toEqual([{ role: 'assistant', content: 'hi' }])
   })
 
-  it('subagent_result / subagent_message 投影为带归属的 user 消息', () => {
+  it('subagent_result / subagent_message 投影为带发送方 id 的 user 消息', () => {
     const messages = projectMessages([
       event('subagent_result', { childSessionId: 'child-1', content: '提案内容' }),
       event('subagent_message', { fromSessionId: 'peer-1', content: '消息内容' }),
     ])
     expect(messages).toEqual([
-      { role: 'user', content: expect.stringContaining('子智能体（id：child-1）') },
-      { role: 'user', content: expect.stringContaining('智能体（id：peer-1）') },
+      { role: 'user', content: expect.stringContaining('child-1') },
+      { role: 'user', content: expect.stringContaining('peer-1') },
     ])
   })
 

@@ -92,7 +92,7 @@ describe('HTTP 传输层', () => {
     expect(body.events).toEqual([])
   })
 
-  it('非法请求体 400，未知路由 404，未知会话流 404', async () => {
+  it('非法请求体 400，未知路由 404，未知会话 404', async () => {
     const bad = await fetch(`${BASE}:${server.port()}/turns`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -105,6 +105,27 @@ describe('HTTP 传输层', () => {
 
     const noSession = await fetch(`${BASE}:${server.port()}/sessions/does-not-exist/stream`)
     expect(noSession.status).toBe(404)
+
+    const unknownTurn = await fetch(`${BASE}:${server.port()}/turns`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionId: 'does-not-exist', input: '打个招呼' }),
+    })
+    expect(unknownTurn.status).toBe(404)
+  })
+
+  it('创建会话拒绝客户端指定父子关系与非法 meta', async () => {
+    const post = (body: unknown) =>
+      fetch(`${BASE}:${server.port()}/sessions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+
+    expect((await post({ meta: { parentId: 'some-session' } })).status).toBe(400)
+    expect((await post({ meta: { depth: 2 } })).status).toBe(400)
+    expect((await post({ meta: [] })).status).toBe(400)
+    expect((await post({ meta: { title: '序章' } })).status).toBe(201)
   })
 
   it('SSE 收到 turn 全过程帧（transition/event），回放与历史一致', async () => {

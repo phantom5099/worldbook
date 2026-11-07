@@ -7,12 +7,15 @@ import { SessionService } from '../src/index.js'
 const hasDb = Boolean(process.env.DATABASE_URL)
 
 describe.skipIf(!hasDb)('PostgresSessionStore 集成', () => {
-  const db = new DbService(process.env.DATABASE_URL!)
-  const store = new PostgresSessionStore(db.sql)
-  const service = new SessionService(store)
+  let db: DbService
+  let store: PostgresSessionStore
+  let service: SessionService
   let sessionId = ''
 
   beforeAll(async () => {
+    db = new DbService(process.env.DATABASE_URL!)
+    store = new PostgresSessionStore(db.sql)
+    service = new SessionService(store)
     await ensureSchema(db.sql)
     sessionId = await service.createSession({ depth: 0 })
   })

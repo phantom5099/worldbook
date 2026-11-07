@@ -54,6 +54,10 @@ function sseWrite(res: ServerResponse, frame: unknown): void {
   res.write(`data: ${JSON.stringify(frame)}\n\n`)
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
 async function ensureSession(deps: HttpDeps, sessionId: string, res: ServerResponse): Promise<boolean> {
   if (await deps.session.getSession(sessionId)) return true
   sendJson(res, 404, { error: `session ${sessionId} not found` })
@@ -113,12 +117,22 @@ export function createHttpServer(deps: HttpDeps, opts: HttpOptions): HttpServerH
     const sessionMatch = url.pathname.match(/^\/sessions\/([^/]+)(\/stream|\/history|\/subagents)?$/)
 
     if (req.method === 'POST' && url.pathname === '/sessions') {
-      const body = (await readJsonBody(req)) as { meta?: SessionMeta } | undefined
-      if (body !== undefined && typeof body !== 'object') {
+      const body = await readJsonBody(req)
+      if (body !== undefined && !isPlainObject(body)) {
         sendJson(res, 400, { error: '请求体须为对象（可选 meta 字段）' })
         return
       }
-      const sessionId = await deps.session.createSession(body?.meta ?? {})
+      const meta = (body as { meta?: unknown } | undefined)?.meta
+      if (meta !== undefined && !isPlainObject(meta)) {
+        sendJson(res, 400, { error: 'meta 须为对象' })
+        return
+      }
+      // 父子关系由子代理服务建立：客户端指定会伪造会话树并绕过深度上限。
+      if (meta !== undefined && ('parentId' in meta || 'depth' in meta)) {
+        sendJson(res, 400, { error: 'meta 不允许设置 parentId/depth：子会话只能由服务端创建' })
+        return
+      }
+      const sessionId = await deps.session.createSession((meta ?? {}) as SessionMeta)
       sendJson(res, 201, { sessionId })
       return
     }
@@ -137,6 +151,7 @@ export function createHttpServer(deps: HttpDeps, opts: HttpOptions): HttpServerH
         sendJson(res, 400, { error: '请求体须为 {sessionId, input}，两者均为非空字符串' })
         return
       }
+      if (!(await ensureSession(deps, body.sessionId, res))) return
       try {
         const handle = await deps.agent.start(body.sessionId, body.input)
         sendJson(res, 202, { turnId: handle.turnId })

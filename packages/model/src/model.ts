@@ -29,7 +29,6 @@ export interface ModelRequest {
 
 export type ModelEvent =
   | { type: 'delta'; text: string }
-  | { type: 'tool_call'; call: ModelToolCall }
   | { type: 'message'; text: string; toolCalls: ModelToolCall[]; usage?: ModelUsage }
 
 export interface ModelClient {

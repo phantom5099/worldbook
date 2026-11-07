@@ -8,11 +8,11 @@ interface ProviderPreset {
   notes: string[]
 }
 
-// 各项取自供应商官方文档（2026-11 核实）；defaultModel 可被 MODEL_NAME 覆盖
+// 各项取自供应商官方文档；defaultModel 可被 MODEL_NAME 覆盖
 export const PROVIDER_PRESETS: Record<ProviderPresetName, ProviderPreset> = {
   deepseek: {
     baseUrl: 'https://api.deepseek.com',
-    defaultModel: 'deepseek-flash',
+    defaultModel: 'deepseek-v4-flash',
     apiKeyEnv: 'DEEPSEEK_API_KEY',
     notes: ['思考模式经 reasoning_content 字段独立返回，多轮需回传'],
   },

@@ -51,7 +51,7 @@ pnpm workspace 根在仓库根（`pnpm-workspace.yaml` → `packages/*`）。每
 
 ```text
 db ← session ← context ← agent ← http ← app（cordis 装配）
-turn（独立）        sink（独立）
+turn（独立）        sink ← session、turn（仅引用其类型）
 model、tool（独立，被 agent 消费）
 subagent ← agent(LoopFactory) + session + model + tool + sink + turn
 http ← subagent（子代理状态端点）
@@ -98,7 +98,7 @@ http ← subagent（子代理状态端点）
 ## 跨包不变量（改代码前先确认没有破坏）
 
 1. 事件日志是唯一真相源：任何进入 LLM 上下文或 SSE 的信息，除 delta 帧外必须先落库。
-2. seq 由 SessionService 在单会话内串行分配（依赖 turn 的 claim 互斥），DB 主键兜底。
+2. seq 由 SessionService 在单会话内分配：冷会话首次 append 的计数器初始化单飞（并发 append 共用同一次 `maxSeq` 读取），分配段无 await，DB 主键兜底。写入者不唯一（turn 写本会话，`send` / `subagent_result` 写目标会话），turn 的 claim 只互斥本会话的回合，不承担 seq 串行。
 3. `settle` 是唯一终态出口且幂等；中断经 `TurnHandle.interrupt()` → AbortController → loop 收尾 → `settle('interrupted')`。
 4. loop 工厂是纯函数，不持有会话、不感知传输协议；模块依赖经构造参数注入。
 5. ToolService 的注册表运行期可变：内置工具由 tool 包的 `builtinTools` 插件经 `ctx.tools.register` 注册（注册随插件作用域销毁），loop 每步重新读取 specs；装配层只声明对 `tools` 服务的依赖。

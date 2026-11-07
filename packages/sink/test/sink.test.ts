@@ -16,7 +16,7 @@ describe('EventSink', () => {
     expect(() => sink.emit('s1', { kind: 'delta', text: 'x' })).not.toThrow()
   })
 
-  it('按 emit 顺序投递帧，break 后解除订阅', async () => {
+  it('按 emit 顺序投递帧', async () => {
     const sink = new EventSink()
     const stream = sink.attach('s1')
     sink.emit('s1', { kind: 'transition', phase: 'running' })
@@ -26,7 +26,6 @@ describe('EventSink', () => {
       { kind: 'transition', phase: 'running' },
       { kind: 'delta', text: 'a' },
     ])
-    sink.emit('s1', { kind: 'delta', text: 'late' })
   })
 
   it('多消费者收到相同的全序帧', async () => {

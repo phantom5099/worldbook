@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { SessionService } from '@worldbook/session'
+import type { SessionEvent } from '@worldbook/session'
 import { MemoryStore } from '@worldbook/session/testing'
 import { ContextService } from '@worldbook/context'
 import { EventSink } from '@worldbook/sink'
@@ -18,8 +19,9 @@ import {
 function setup(opts?: {
   maxDepth?: number
   wake?: (sessionId: string, seq: number) => void
+  store?: MemoryStore
 }) {
-  const store = new MemoryStore()
+  const store = opts?.store ?? new MemoryStore()
   const session = new SessionService(store)
   const context = new ContextService(session)
   const model = new MockModelClient()
@@ -132,6 +134,20 @@ describe('subagent spawn', () => {
     await expect(
       subagent().spawn(grandchild, { systemPrompt: 's', task: 't' }),
     ).rejects.toThrow(SubagentDepthLimitError)
+  })
+
+  it('spawn 登记失败：子会话标记 failed，不残留 running 回合', async () => {
+    const { session, subagent, turns, store } = setup({ store: new FailingSpawnStore() })
+    const parent = await session.createSession()
+
+    await expect(
+      subagent().spawn(parent, { systemPrompt: 's', task: 't' }),
+    ).rejects.toThrow('db down')
+
+    const children = [...store.sessions.values()].filter((row) => row.parentId === parent)
+    expect(children).toHaveLength(1)
+    expect(children[0]!.status).toBe('failed')
+    expect(turns.getState(children[0]!.id)?.phase).toBe('failed')
   })
 
   it('子代理忙碌时 spawn 拒绝（同会话单活跃 turn）', async () => {
@@ -338,3 +354,14 @@ describe('subagent 状态与唤醒', () => {
     await expect(svc.listChildren((await session.createSession()))).resolves.toEqual([])
   })
 })
+
+/** 让 subagent_spawned 登记失败，用于验证 spawn 失败后的清理。 */
+class FailingSpawnStore extends MemoryStore {
+  override async insertEvents(
+    sessionId: string,
+    events: ReadonlyArray<SessionEvent>,
+  ): Promise<void> {
+    if (events.some((event) => event.type === 'subagent_spawned')) throw new Error('db down')
+    await super.insertEvents(sessionId, events)
+  }
+}

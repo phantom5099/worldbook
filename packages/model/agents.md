@@ -5,10 +5,10 @@
 ## 结构
 
 - `ModelClient.completeStream(request)`：唯一的模型调用面，流式 `AsyncIterable<ModelEvent>`。
-- `ModelEvent` 三类：`delta`（流式片段）、`tool_call`（调用中片段，v1 实现未用，保留给逐段产出调用方）、`message`（终局：全文 + toolCalls + usage）。
+- `ModelEvent` 两类：`delta`（流式片段）、`message`（终局：全文 + toolCalls + usage）。工具调用只由终局的 `message` 携带，不逐段产出。
 - `MockModelClient`（`testing/`）：脚本队列（`enqueue`），记录全部 `requests` 供断言；脚本耗尽或 `error` 字段抛错。不属于生产代码，不进主入口导出。
 - `OpenAICompatClient`：基于官方 `openai` npm 包（v7）+ `baseURL` 覆盖，SSE 解析、tool_calls 分片累积、重试由 SDK 承担；DeepSeek/GLM 等 OpenAI 兼容供应商共用。构造参数 `{baseUrl, apiKey, model, headers?, fetchImpl?}`（`fetchImpl` 走 SDK 的 `fetch` 注入，测试用）。
-- `PROVIDER_PRESETS`：deepseek / gpt / glm 三家预置（baseUrl、defaultModel、apiKeyEnv、与 OpenAI 协议的差异备注）；`MODEL_NAME` 可覆盖 defaultModel。DeepSeek 旧模型名 deepseek-chat/deepseek-reasoner 已于 2026-07-24 停用（官方文档），勿用。
+- `PROVIDER_PRESETS`：deepseek / gpt / glm 三家预置（baseUrl、defaultModel、apiKeyEnv、与 OpenAI 协议的差异备注）；`MODEL_NAME` 可覆盖 defaultModel。DeepSeek 当前模型名为 `deepseek-v4-flash` / `deepseek-v4-pro`，旧名 deepseek-chat/deepseek-reasoner 已于 2026-07-24 停用（官方文档），勿用。
 
 ## 不变量与边界
 

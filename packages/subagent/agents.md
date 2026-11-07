@@ -12,7 +12,8 @@
 - `wait(childSessionId, opts? {timeoutMs?})` → `SubagentWaitResult {phase, reason?, result?, timedOut?}`：默认超时 30000ms，超时返回当前快照并带 `timedOut: true`；未知 id 返回 `{phase: 'unknown'}`。
 - `status(childSessionId)` → `SubagentSnapshot {phase, reason?, result?}`：只读折叠，不激活子 Agent。
 - `listChildren(parentSessionId)` → `SubagentInfo[]`：扫描父会话 `subagent_spawned`/`subagent_result` 目录，逐个折叠子会话回合状态。
-- 结果回注：子 loop 结束取最终 assistant_message 原文（不截断），向父会话 append `subagent_result`，随后以该事件的 seq 唤醒父会话。
+- 结果回注：子 loop 结束取最终 assistant_message 原文（不截断），向父会话 append `subagent_result`，随后以该事件的 seq 唤醒父会话。回注落库失败只记录日志、不重试：父会话没有第二条感知通道，子会话的 `turn_ended` 已保证 `wait` / `status` 仍能折叠出终态。
+- 失败清理：新建子会话后 `claim` 失败、或 `subagent_spawned` 登记失败时，子会话被标记为 `failed`（`setStatus`），不留下没有事件的 `active` 会话；登记失败同时 `settle('error')`，避免残留 running 回合。
 
 ## 回合状态
 
@@ -29,7 +30,7 @@
 - 通信范围是全同根拓扑（父↔子、兄弟互发）。
 - 结果与消息全部经事件日志交付，无跨会话回调；子 loop 的 claim/settle 与主 loop 共用同一 TurnRegistry。
 - 完成推送是进程内加速：`wait` 通过 waiter 集合即时返回；日志折叠对重启后的等待同样成立。
-- 唤醒携带触发事件 seq：目标会话有活跃 turn 时 `AgentService` 挂起唤醒，该 turn 收尾前已读到该事件则丢弃，否则收尾后补开一轮，收尾窗口不丢唤醒。
+- 唤醒携带触发事件 seq：目标会话有活跃 turn 时 `AgentService` 挂起唤醒，该 turn 收尾前已读到该事件则丢弃，否则收尾后补开一轮，收尾窗口不丢唤醒。回调在依赖里是 `void` 契约，错误由装配层记录。
 - 工具化暴露（spawn/send_message/wait_subagent 三个 ToolDefinition）由 tool 包的 `builtinTools` 插件经 `ctx.tools.register` 注册，工具执行期从 ctx 解析本服务。
 
 ## 依赖

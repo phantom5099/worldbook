@@ -61,48 +61,57 @@ export interface AppConfig {
   http?: HttpOptions
 }
 
-const assemble: Plugin.Object<Context, AppConfig> = {
-  name: 'worldbook',
-  inject: { tools: { required: true } },
-  apply(ctx: Context, config: AppConfig) {
-    const store = 'store' in config.database ? config.database.store : new PostgresSessionStore(ctx.db!.sql)
+/** 按配置构造装配插件：inject 随 database 形态生成，避免改写共享插件对象。 */
+function createAssemble(withDb: boolean): Plugin.Object<Context, AppConfig> {
+  return {
+    name: 'worldbook',
+    inject: withDb
+      ? { tools: { required: true }, db: { required: true } }
+      : { tools: { required: true } },
+    apply(ctx: Context, config: AppConfig) {
+      const store = 'store' in config.database
+        ? config.database.store
+        : new PostgresSessionStore(ctx.db!.sql)
 
-    const session = new SessionService(store)
-    const context = new ContextService(session)
-    const model = config.modelClient ?? new OpenAICompatClient(config.model)
-    const tools = ctx.tools
-    const turns = new TurnRegistry(sessionTurnIds(session))
-    const sink = new EventSink()
-    const agent = new AgentService({
-      session,
-      context,
-      model,
-      tools,
-      turns,
-      sink,
-      system: config.system,
-      maxSteps: config.maxSteps,
-    })
-    const subagent = new SubagentService({
-      session,
-      sink,
-      turns,
-      context,
-      model,
-      tools,
-      wake: (sessionId: string, seq: number) => {
-        void agent.wake(sessionId, seq)
-      },
-    })
+      const session = new SessionService(store)
+      const context = new ContextService(session)
+      const model = config.modelClient ?? new OpenAICompatClient(config.model)
+      const tools = ctx.tools
+      const turns = new TurnRegistry(sessionTurnIds(session))
+      const sink = new EventSink()
+      const agent = new AgentService({
+        session,
+        context,
+        model,
+        tools,
+        turns,
+        sink,
+        system: config.system,
+        maxSteps: config.maxSteps,
+      })
+      const subagent = new SubagentService({
+        session,
+        sink,
+        turns,
+        context,
+        model,
+        tools,
+        wake: (sessionId: string, seq: number) => {
+          void agent.wake(sessionId, seq).catch((err: unknown) => {
+            console.error(`[wake] 会话 ${sessionId} 唤醒失败`, err)
+          })
+        },
+      })
 
-    ctx.set('session', session)
-    ctx.set('context', context)
-    ctx.set('model', model)
-    ctx.set('turns', turns)
-    ctx.set('sink', sink)
-    ctx.set('agent', agent)
-    ctx.set('subagent', subagent)
-  },
+      ctx.set('session', session)
+      ctx.set('context', context)
+      ctx.set('model', model)
+      ctx.set('turns', turns)
+      ctx.set('sink', sink)
+      ctx.set('agent', agent)
+      ctx.set('subagent', subagent)
+    },
+  }
 }
 
 export function createApp(config: AppConfig): Context {
@@ -111,9 +120,10 @@ export function createApp(config: AppConfig): Context {
   root.plugin(builtinTools)
   if ('url' in config.database) {
     root.plugin(DatabaseService, { url: config.database.url })
-    assemble.inject = { tools: { required: true }, db: { required: true } }
+    root.plugin(createAssemble(true), config)
+  } else {
+    root.plugin(createAssemble(false), config)
   }
-  root.plugin(assemble, config)
   return root
 }
 

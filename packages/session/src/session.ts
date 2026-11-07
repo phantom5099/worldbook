@@ -2,7 +2,9 @@ import type { OutgoingEvent, SessionEvent, SessionId, SessionMeta } from './type
 import type { SessionRow, SessionStatus, SessionStore } from './store.js'
 
 export class SessionService {
-  private counters = new Map<SessionId, number>()
+  private readonly counters = new Map<SessionId, number>()
+  /** 冷会话的计数器初始化：单飞，避免并发 append 各自读到同一个 maxSeq 而分配重复 seq。 */
+  private readonly initializing = new Map<SessionId, Promise<void>>()
 
   constructor(private readonly store: SessionStore) {}
 
@@ -12,16 +14,14 @@ export class SessionService {
 
   async append(sessionId: SessionId, events: readonly OutgoingEvent[]): Promise<SessionEvent[]> {
     if (events.length === 0) return []
-    let last = this.counters.get(sessionId)
-    if (last === undefined) {
-      last = await this.store.maxSeq(sessionId)
-    }
+    await this.ensureCounter(sessionId)
+    let last = this.counters.get(sessionId)!
     const createdAt = new Date()
     const assigned = events.map((event) => {
-      last = last! + 1
+      last += 1
       return { seq: last, type: event.type, payload: event.payload, createdAt }
     })
-    this.counters.set(sessionId, assigned[assigned.length - 1]!.seq)
+    this.counters.set(sessionId, last)
     try {
       await this.store.insertEvents(sessionId, assigned)
     } catch (error) {
@@ -29,6 +29,23 @@ export class SessionService {
       throw error
     }
     return assigned
+  }
+
+  private async ensureCounter(sessionId: SessionId): Promise<void> {
+    if (this.counters.has(sessionId)) return
+    let pending = this.initializing.get(sessionId)
+    if (pending === undefined) {
+      pending = this.store
+        .maxSeq(sessionId)
+        .then((max) => {
+          this.counters.set(sessionId, max)
+        })
+        .finally(() => {
+          this.initializing.delete(sessionId)
+        })
+      this.initializing.set(sessionId, pending)
+    }
+    await pending
   }
 
   getHistory(
