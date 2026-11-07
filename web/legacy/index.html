@@ -1,0 +1,914 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f6f2e9">
+  <title>Worldbook · 会话</title>
+  <link rel="stylesheet" href="assets/styles.css">
+</head>
+<body class="auth-locked">
+  <a class="skip-link" href="#content">跳到正文</a>
+
+  <div class="auth-screen" id="authScreen">
+    <div class="auth-shell">
+      <aside class="auth-brand">
+        <div class="auth-brand-row">
+          <span class="brand-mark">W</span>
+          <span class="brand-text">
+            <strong>Worldbook</strong>
+            <small>文字开放世界</small>
+          </span>
+        </div>
+        <div class="auth-brand-copy">
+          <h1>每个账号，<br>有自己的世界。</h1>
+          <p>世界书、角色卡与会话按账号隔离，只保存在当前浏览器。</p>
+        </div>
+        <ul class="auth-points">
+          <li><b>世界书</b><span>模板与默认主角卡</span></li>
+          <li><b>角色卡</b><span>通用 / 世界 / 会话三层</span></li>
+          <li><b>会话</b><span>从世界书生出的进度</span></li>
+        </ul>
+        <p class="auth-local">本地原型 · 账号与数据仅存储在这台设备的浏览器中</p>
+      </aside>
+
+      <section class="auth-panel" aria-labelledby="authTitle">
+        <div class="auth-panel-head">
+          <h2 id="authTitle">登录</h2>
+          <p id="authLead">回到你的世界书与角色卡。</p>
+        </div>
+        <form class="auth-form" id="authForm" novalidate>
+          <label class="field" id="authNameField" hidden>
+            <span>昵称</span>
+            <input id="authName" maxlength="20" autocomplete="nickname" placeholder="例如：闻舟">
+          </label>
+          <label class="field">
+            <span>账号</span>
+            <input id="authHandle" maxlength="24" autocomplete="username" placeholder="例如：wenzhou" required>
+          </label>
+          <label class="field">
+            <span>密码</span>
+            <input id="authPassword" type="password" maxlength="64" autocomplete="current-password" placeholder="至少 6 位" required>
+          </label>
+          <label class="field" id="authConfirmField" hidden>
+            <span>确认密码</span>
+            <input id="authConfirm" type="password" maxlength="64" autocomplete="new-password" placeholder="再输入一次">
+          </label>
+          <p class="auth-error" id="authError" hidden></p>
+          <button type="submit" class="primary-btn auth-submit" id="authSubmit">登录</button>
+        </form>
+        <div class="auth-switch">
+          <span id="authSwitchHint">还没有账号？</span>
+          <button type="button" class="auth-link" id="authSwitch">创建账号</button>
+        </div>
+        <p class="auth-demo" id="authDemo" hidden>
+          内置演示账号
+          <button type="button" class="auth-link" id="authDemoFill">admin / 123456</button>
+        </p>
+        <p class="auth-note">同一浏览器可退出后切换账号；各账号的自建世界书、角色卡与会话互不可见。</p>
+      </section>
+    </div>
+  </div>
+
+  <div class="app">
+    <aside class="rail" id="rail" aria-label="主导航">
+      <div class="rail-brand">
+        <span class="brand-mark">W</span>
+        <span class="brand-text">
+          <strong>Worldbook</strong>
+          <small>文字开放世界</small>
+        </span>
+      </div>
+
+      <nav class="rail-nav">
+        <button class="nav-item active" data-nav="sessions" aria-current="page">
+          <span class="nav-glyph">话</span><span>会话</span>
+        </button>
+        <button class="nav-item" data-nav="worlds">
+          <span class="nav-glyph">界</span><span>世界</span>
+        </button>
+        <button class="nav-item" data-nav="cards">
+          <span class="nav-glyph">人</span><span>角色</span>
+        </button>
+        <button class="nav-item" data-nav="settings">
+          <span class="nav-glyph">商</span><span>提供商</span>
+        </button>
+      </nav>
+
+      <div class="rail-spacer"></div>
+
+      <div class="rail-scope">
+        <div class="scope-head"><span>本单元范围</span><span>3 / 12 轮</span></div>
+        <div class="scope-track"><span style="width:25%"></span></div>
+        <p>角色 4 / 4 · 节点 6 / 24</p>
+      </div>
+
+      <div class="rail-account">
+        <span class="rail-account-avatar" id="accountAvatar">—</span>
+        <span class="rail-account-copy">
+          <strong id="accountName">未登录</strong>
+          <small id="accountHandle">本地账号</small>
+        </span>
+        <button type="button" class="rail-logout" id="logoutBtn">退出</button>
+      </div>
+
+      <button class="rail-new" data-nav="entry">
+        <span>＋</span><span>新建会话</span>
+      </button>
+    </aside>
+
+    <div class="main">
+      <header class="topbar">
+        <button class="icon-btn menu-btn" id="menuBtn" aria-label="打开导航">
+          <span class="hamburger"><i></i><i></i><i></i></span>
+        </button>
+
+        <div class="world-id">
+          <span class="world-eyebrow" id="topWorldEyebrow">雾港纪事 · 世界书</span>
+          <strong id="topSessionName">第七码头之夜</strong>
+        </div>
+
+        <div class="topbar-actions">
+          <span class="unit-progress" id="topProgress">第一单元 · 3 / 12</span>
+          <span class="ai-chip">AI 生成</span>
+          <button class="icon-btn text-btn" data-nav="story" aria-label="继续当前会话">读</button>
+          <button class="icon-btn text-btn" id="fontToggle" aria-label="调整正文字号">Aa</button>
+          <button class="icon-btn text-btn" id="contextToggle" aria-label="切换状态侧栏">栏</button>
+        </div>
+      </header>
+
+      <div class="viewport">
+        <main class="content" id="content">
+
+          <section class="view" data-view="story" id="view-story">
+            <div class="unit-head">
+              <div class="unit-line">
+                <span class="unit-kicker" id="storyKicker">第一单元</span>
+                <h1 id="storyUnitTitle">雾港的第七码头</h1>
+                <span class="unit-status">展开</span>
+              </div>
+              <p class="unit-meta" id="storyUnitMeta">戌时 · 长雾第七日 · 第七码头</p>
+              <div class="unit-progressline"><span style="width:25%"></span></div>
+            </div>
+
+            <div class="scene-banner" id="sceneBanner" aria-hidden="true">
+              <svg class="scene-art" viewBox="0 0 800 180" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" stop-color="#8fa0a0"/>
+                    <stop offset=".55" stop-color="#c3c4b4"/>
+                    <stop offset="1" stop-color="#e2d8c2"/>
+                  </linearGradient>
+                </defs>
+                <rect width="800" height="180" fill="url(#skyGrad)"/>
+                <circle cx="642" cy="52" r="27" fill="#efe6d2" opacity=".55"/>
+                <path d="M0 126 L80 116 L150 124 L238 108 L318 122 L404 114 L500 126 L590 116 L690 124 L800 112 L800 180 L0 180Z" fill="#394547" opacity=".5"/>
+                <path d="M0 148 L110 140 L200 146 L310 134 L404 146 L516 138 L628 148 L734 140 L800 146 L800 180 L0 180Z" fill="#222a2c" opacity=".82"/>
+                <path d="M116 148 L116 92 L122 92 L122 148Z" fill="#1c2223"/>
+                <path d="M92 96 L172 96 L172 101 L92 101Z" fill="#1c2223"/>
+                <path d="M152 101 L152 122" stroke="#1c2223" stroke-width="2"/>
+                <path d="M60 148 L60 132 L96 132 L96 148Z" fill="#1c2223"/>
+                <path d="M196 148 L196 126 L214 118 L232 126 L232 148Z" fill="#1c2223"/>
+                <path d="M252 148 L252 136 L282 136 L282 148Z" fill="#1c2223"/>
+                <path d="M344 148 L344 130 L360 124 L376 130 L376 148Z" fill="#1c2223"/>
+                <path d="M430 148 L430 138 L470 138 L470 148Z" fill="#1c2223"/>
+                <path d="M522 148 L522 128 L538 121 L554 128 L554 148Z" fill="#1c2223"/>
+                <path d="M596 148 L596 136 L640 136 L640 148Z" fill="#1c2223"/>
+                <path d="M700 148 L700 126 L718 118 L736 126 L736 148Z" fill="#1c2223"/>
+              </svg>
+              <div class="scene-fog"></div>
+              <div class="scene-caption">
+                <span class="scene-place" id="scenePlace">雾港 · 第七码头</span>
+                <span class="scene-time" id="sceneTime">戌时 · 长雾第七日</span>
+              </div>
+            </div>
+
+            <div class="prose" id="stream">
+              <p>雾从海面漫上来的时候，第七码头的灯一盏一盏地灭了。</p>
+              <p>你站在卸货的石阶上，手里那封没有署名的信被潮气浸得发软。信封上只有四个字：交给白塔。</p>
+              <p>一个提灯的孩子从栈桥尽头跑过，灯芯是青色的。她经过你身边时，脚步没有停，却低声说了一句：“别让守夜人看见那封信。”</p>
+              <p class="speech"><span class="speaker">沈砚</span>“外乡人，”他说，“第七码头今晚不接客。”</p>
+              <p>他把一卷湿透的缆绳踢回木桩，抬头看了你一眼。那一眼很短，像是在数你身上有几件不该出现在这里的东西。</p>
+              <div class="state-note">
+                <span class="state-mark">◈</span>
+                <div>
+                  <strong>沈砚</strong> 对你的印象：<em>谨慎 · 来历不明</em>
+                  <span class="delta up">信任 +0.02</span>
+                </div>
+              </div>
+            </div>
+
+            <section class="turn-options" aria-labelledby="choiceTitle">
+              <div class="options-head">
+                <h2 id="choiceTitle">你要怎么做？</h2>
+                <span>选项表示意图，不锁死自由输入</span>
+              </div>
+
+              <div class="intent-list" id="intentList">
+                <button class="intent-card" data-action="cautious">
+                  <span class="intent-index">01</span>
+                  <span class="intent-body">
+                    <span class="intent-tone">谨慎</span>
+                    <span class="intent-title">把信收进内袋，先观察码头的人</span>
+                    <span class="intent-hint">沈砚会注意到你的动作；阿箬可能折返。</span>
+                  </span>
+                  <span class="intent-arrow">→</span>
+                </button>
+
+                <button class="intent-card" data-action="direct">
+                  <span class="intent-index">02</span>
+                  <span class="intent-body">
+                    <span class="intent-tone">直率</span>
+                    <span class="intent-title">直接问沈砚，白塔怎么走</span>
+                    <span class="intent-hint">可能触发守夜人的盘问；信中内容仍是秘密。</span>
+                  </span>
+                  <span class="intent-arrow">→</span>
+                </button>
+
+                <button class="intent-card" data-action="follow">
+                  <span class="intent-index">03</span>
+                  <span class="intent-body">
+                    <span class="intent-tone">冒险</span>
+                    <span class="intent-title">跟上那个提灯的孩子</span>
+                    <span class="intent-hint">离开码头；沈砚对你的印象会下降。</span>
+                  </span>
+                  <span class="intent-arrow">→</span>
+                </button>
+              </div>
+
+              <form class="composer" id="composer">
+                <label class="sr-only" for="composerInput">用你自己的话行动</label>
+                <div class="composer-box">
+                  <textarea id="composerInput" rows="1" placeholder="或者，用自己的话行动……"></textarea>
+                  <button class="send-btn" type="submit" aria-label="发送行动">发送</button>
+                </div>
+                <p class="composer-note">模型将按角色绑定解析供应商。本轮预计 3–5 次调用。</p>
+              </form>
+
+              <p class="ai-disclosure">本段由 AI 生成 · 内容可能不准确 · <button type="button" class="link-btn" data-toast="举报入口已打开（原型）">举报</button></p>
+            </section>
+          </section>
+
+          <section class="view" data-view="sessions" id="view-sessions" hidden>
+            <div class="page-head">
+              <h1>你的会话</h1>
+              <p>会话从世界书衍生；创建后世界书与角色卡内容锁定，只能调整模型。</p>
+              <div class="inline-actions">
+                <button class="primary-btn" type="button" data-nav="entry">＋ 新建会话</button>
+              </div>
+            </div>
+
+            <div id="currentSession"></div>
+            <div class="session-list" id="sessionList"></div>
+
+            <div class="modal" id="sessionEditModal" hidden>
+              <div class="modal-backdrop" data-close-session-edit></div>
+              <div class="modal-card session-edit-modal" role="dialog" aria-modal="true" aria-labelledby="sessionEditTitle">
+                <form id="sessionEditForm">
+                  <div class="card-head">
+                    <h3 id="sessionEditTitle">编辑会话</h3>
+                    <button type="button" class="modal-close" data-close-session-edit aria-label="关闭">关闭</button>
+                  </div>
+                  <p class="modal-lead" id="sessionEditHint"></p>
+                  <div class="form-grid">
+                    <label class="field">
+                      <span>会话名</span>
+                      <input id="sessionEditName" maxlength="40" required>
+                    </label>
+                    <div class="field">
+                      <span>世界书<em>不可更改</em></span>
+                      <div class="field-locked" id="sessionEditWorldName"></div>
+                    </div>
+                  </div>
+                  <div id="sessionEditBody"></div>
+                  <div class="wizard-actions">
+                    <button type="button" class="ghost-btn" data-close-session-edit>取消</button>
+                    <button type="submit" class="primary-btn">保存</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </section>
+
+          <section class="view" data-view="entry" id="view-entry" hidden>
+            <div class="page-head">
+              <h1 id="entryTitle">从一本世界书开始</h1>
+              <p id="entryLead">世界观只是模板。主角与参与角色都以副本进入本会话，修改不会写回原角色卡。</p>
+            </div>
+
+            <div class="section-head compact">
+              <h2>01 · 选择世界书</h2>
+            </div>
+
+            <div class="world-picker" id="entryWorldPicker" role="radiogroup" aria-label="选择世界书"></div>
+
+            <div class="world-card">
+              <div class="world-card-top">
+                <div>
+                  <h2 id="entryWorldName">雾港纪事</h2>
+                </div>
+                <span class="status-pill" id="entryWorldGenre">低魔 · 悬疑</span>
+              </div>
+              <div class="tag-row" id="entryWorldTags"></div>
+              <button class="world-manage" type="button" data-nav="world">查看世界书与角色卡 →</button>
+            </div>
+
+            <div class="section-head">
+              <h2>02 · 命名会话</h2>
+            </div>
+            <label class="field entry-field">
+              <span>会话名</span>
+              <input id="sessionNameInput" type="text" maxlength="40" placeholder="例如：第七码头之夜">
+            </label>
+
+            <div class="section-head">
+              <h2>03 · 主角选择</h2>
+              <span>内容可编辑 · 仅作用于本会话</span>
+            </div>
+            <p class="entry-section-lead">直接选择一张角色卡，或从空白开始自定义主角。修改只保存在本次会话，不会写回原角色卡。</p>
+
+            <div class="protagonist-current" id="entryProtagonistRow"></div>
+
+            <div class="fact-panel" id="factPanel">
+              <div class="section-head compact">
+                <h2>世界给主角的三个事实</h2>
+                <span id="factMode">三条事实会随主角带入本会话</span>
+              </div>
+              <div class="fact-list" id="factList"></div>
+            </div>
+
+            <div class="section-head">
+              <h2>04 · 参与角色</h2>
+              <span class="entry-cast-count" id="entryCastCount">0 / 6</span>
+            </div>
+            <p class="entry-section-lead">本世界角色默认在场，也可以加入通用角色卡。最多选择 6 位参与角色。</p>
+            <div class="entry-cast-grid" id="entryCastList"></div>
+
+            <div class="entry-foot">
+              <div class="entry-actions">
+                <button class="ghost-btn" id="cancelEntry" type="button" data-nav="sessions">取消</button>
+                <button class="ghost-btn" id="saveDraft" type="button">保存草稿</button>
+                <button class="primary-btn" id="startSession" type="button">开始会话 →</button>
+              </div>
+            </div>
+
+            <div class="modal" id="entryProtagonistModal" hidden>
+              <div class="modal-backdrop" data-close-entry-protagonist></div>
+              <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="entryProtagonistTitle">
+                <form id="entryProtagonistForm">
+                  <div class="card-head">
+                    <h3 id="entryProtagonistTitle">编辑主角副本</h3>
+                    <button type="button" class="modal-close" data-close-entry-protagonist aria-label="关闭">关闭</button>
+                  </div>
+                  <p class="modal-lead" id="entryCardHint">只修改本会话使用的主角副本，不会写回原角色卡。</p>
+                  <div class="form-grid">
+                    <label class="field">
+                      <span>姓名</span>
+                      <input id="entryCardName" maxlength="20" required>
+                    </label>
+                    <label class="field">
+                      <span>身份 / 位置</span>
+                      <input id="entryCardRole" maxlength="40">
+                    </label>
+                    <label class="field span-2">
+                      <span>公开目标</span>
+                      <input id="entryCardGoal" maxlength="80">
+                    </label>
+                    <label class="field span-2">
+                      <span>私有目标（秘密）</span>
+                      <input id="entryCardSecret" maxlength="80">
+                    </label>
+                    <label class="field">
+                      <span>核心特质</span>
+                      <input id="entryCardTraits" maxlength="60" placeholder="用顿号分隔，例如：谨慎、记性极好、不轻易承诺">
+                    </label>
+                    <label class="field">
+                      <span>初始关系</span>
+                      <input id="entryCardRelation" maxlength="60">
+                    </label>
+                    <label class="field">
+                      <span>首选模型</span>
+                      <input id="entryCardModel" value="A · narrative-x-32k">
+                    </label>
+                    <label class="field">
+                      <span>备选模型</span>
+                      <input id="entryCardFallback" value="B · novel-z">
+                    </label>
+                  </div>
+                  <div class="wizard-actions">
+                    <button type="button" class="ghost-btn" data-close-entry-protagonist>取消</button>
+                    <button type="submit" class="primary-btn">应用到本会话</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+
+            <div class="modal" id="protagonistPickerModal" hidden>
+              <div class="modal-backdrop" data-close-protagonist-picker></div>
+              <div class="modal-card protagonist-picker" role="dialog" aria-modal="true" aria-labelledby="protagonistPickerTitle">
+                <div class="card-head">
+                  <h3 id="protagonistPickerTitle">选择主角卡</h3>
+                  <button type="button" class="modal-close" data-close-protagonist-picker aria-label="关闭">关闭</button>
+                </div>
+                <p class="modal-lead">选择一张角色卡作为本会话主角，也可以从空白开始自定义。修改只作用于本会话。</p>
+                <div class="protagonist-picker-list" id="protagonistPickerList"></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="view" data-view="worlds" id="view-worlds" hidden>
+            <div class="page-head cards-head">
+              <div class="cards-head-copy">
+                <h1>世界书</h1>
+                <p>一本封面对应一个世界书，只做模板；会话从这里衍生，保留自己的进度与角色快照。</p>
+              </div>
+              <div class="inline-actions">
+                <button class="primary-btn" id="openWorldCreator" type="button">＋ 新建世界书</button>
+              </div>
+            </div>
+
+            <div class="book-grid" id="worldBooks"></div>
+
+            <div class="modal" id="worldCreatorModal" hidden>
+              <div class="modal-backdrop" data-close-world-creator></div>
+              <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="worldCreatorTitle">
+                <form id="worldCreator">
+                  <div class="card-head">
+                    <h3 id="worldCreatorTitle">新建世界书</h3>
+                    <button type="button" class="modal-close" id="cancelWorldCreator" aria-label="关闭">关闭</button>
+                  </div>
+                  <div class="form-grid">
+                    <label class="field">
+                      <span>世界名</span>
+                      <input id="worldNameInput" maxlength="24" placeholder="例如：落潮城" required>
+                    </label>
+                    <label class="field">
+                      <span>类型与基调</span>
+                      <input id="worldGenreInput" maxlength="30" placeholder="例如：航海 · 悬疑 · 低魔">
+                    </label>
+                    <label class="field span-2">
+                      <span>一句话内核</span>
+                      <input id="worldHookInput" maxlength="90" placeholder="例如：一座每天退潮后都会多出一条街的港口城市。" required>
+                    </label>
+                    <label class="field span-2">
+                      <span>世界规则</span>
+                      <textarea id="worldRulesInput" rows="3" placeholder="什么可能，什么不可能；力量、技术或超自然的边界。"></textarea>
+                    </label>
+                    <label class="field span-2">
+                      <span>禁用项</span>
+                      <input id="worldBansInput" placeholder="例如：不出现真实宗教，不写未成年人恋爱。">
+                    </label>
+                  </div>
+                  <div class="wizard-actions">
+                    <button type="button" class="ghost-btn ai-assist-trigger" data-ai-open="world">✦ AI 帮忙生成</button>
+                    <button type="button" class="ghost-btn" data-close-world-creator>取消</button>
+                    <button type="submit" class="primary-btn">保存世界</button>
+                  </div>
+                </form>
+                <div class="ai-assist-pane" id="worldAiPane" data-ai-pane="world" hidden></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="view" data-view="world" id="view-world" hidden>
+            <button class="back-link" type="button" data-nav="worlds">← 返回世界书</button>
+
+            <div class="world-detail">
+              <div class="world-detail-head">
+                <div>
+                  <h1 id="worldTitle"></h1>
+                  <p id="worldHook"></p>
+                </div>
+                <span class="status-pill" id="worldGenre"></span>
+              </div>
+              <div class="lore-grid" id="worldLore"></div>
+              <div class="world-detail-actions" id="worldActions"></div>
+              <div id="worldDefaultCard"></div>
+            </div>
+
+            <section class="world-cards">
+              <div class="section-head compact">
+                <h2>角色卡</h2>
+                <div class="inline-actions">
+                  <button type="button" class="ghost-btn" id="importCards">导入 JSON</button>
+                  <button type="button" class="primary-btn" id="openCardCreator">＋ 新建角色卡</button>
+                </div>
+              </div>
+              <div class="card-grid" id="worldCards"></div>
+            </section>
+
+            <div class="modal" id="cardCreatorModal" hidden>
+              <div class="modal-backdrop" data-close-card-creator></div>
+              <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="cardCreatorTitle">
+                <form id="cardCreator" novalidate>
+                  <div class="card-head">
+                    <h3 id="cardCreatorTitle">新建角色卡</h3>
+                    <button type="button" class="modal-close" id="cancelCardCreator" aria-label="关闭">关闭</button>
+                  </div>
+                  <p class="modal-lead">字段将编译为角色运行时，只影响之后的新会话。</p>
+                  <div class="form-grid">
+                    <label class="field">
+                      <span>姓名</span>
+                      <input id="cardNameInput" maxlength="20" placeholder="例如：闻舟" required>
+                    </label>
+                    <label class="field">
+                      <span>身份 / 位置</span>
+                      <input id="cardRoleInput" maxlength="40" placeholder="例如：摆渡人 · 落潮渡口">
+                    </label>
+                    <label class="field span-2">
+                      <span>公开目标</span>
+                      <input id="cardGoalInput" maxlength="80" placeholder="其他角色和玩家都能看到的目标。">
+                    </label>
+                    <label class="field span-2">
+                      <span>私有目标（秘密）</span>
+                      <input id="cardSecretInput" maxlength="80" placeholder="只写进角色私有账本，不进入其他角色上下文。">
+                    </label>
+                    <label class="field">
+                      <span>核心特质</span>
+                      <input id="cardTraitsInput" maxlength="40" placeholder="例如：克制、护短、记仇">
+                    </label>
+                    <label class="field">
+                      <span>初始关系</span>
+                      <input id="cardRelationInput" maxlength="40" placeholder="例如：对玩家保持警惕">
+                    </label>
+                    <label class="field">
+                      <span>首选模型</span>
+                      <input id="cardModelInput" value="A · narrative-x-32k">
+                    </label>
+                    <label class="field">
+                      <span>备选模型</span>
+                      <input id="cardFallbackInput" value="B · novel-z">
+                    </label>
+                  </div>
+                  <div class="wizard-actions">
+                    <button type="button" class="ghost-btn ai-assist-trigger" data-ai-open="card">✦ AI 帮忙生成</button>
+                    <button type="button" class="ghost-btn" data-close-card-creator>取消</button>
+                    <button type="submit" class="primary-btn">保存角色卡</button>
+                  </div>
+                </form>
+                <div class="ai-assist-pane" id="cardAiPane" data-ai-pane="card" hidden></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="view" data-view="cards" id="view-cards" hidden>
+            <div class="page-head cards-head">
+              <div class="cards-head-copy">
+                <h1>不依附世界的角色</h1>
+                <p>通用角色卡不属于任何世界书，可在新建会话时选为主角原型。世界角色卡在对应世界书内管理，会话角色卡在打开会话后管理。</p>
+              </div>
+              <div class="inline-actions">
+                <button type="button" class="ghost-btn" id="importGenericCards">导入 JSON</button>
+                <button type="button" class="primary-btn" id="openGenericCardCreator">＋ 新建角色卡</button>
+              </div>
+            </div>
+
+            <div class="card-grid" id="genericCards"></div>
+
+            <div class="modal" id="genericCardCreatorModal" hidden>
+              <div class="modal-backdrop" data-close-generic-card-creator></div>
+              <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="genericCardCreatorTitle">
+                <form id="genericCardCreator" novalidate>
+                  <div class="card-head">
+                    <h3 id="genericCardCreatorTitle">新建角色卡</h3>
+                    <button type="button" class="modal-close" id="cancelGenericCardCreator" aria-label="关闭">关闭</button>
+                  </div>
+                  <p class="modal-lead">主界面通用角色卡，不属于任何世界。</p>
+                  <div class="form-grid">
+                    <label class="field">
+                      <span>姓名</span>
+                      <input id="genericCardName" maxlength="20" placeholder="例如：路渺" required>
+                    </label>
+                    <label class="field">
+                      <span>身份 / 位置</span>
+                      <input id="genericCardRole" maxlength="40" placeholder="例如：拾遗人 · 无固定居所">
+                    </label>
+                    <label class="field span-2">
+                      <span>公开目标</span>
+                      <input id="genericCardGoal" maxlength="80" placeholder="其他角色和玩家都能看到的目标。">
+                    </label>
+                    <label class="field span-2">
+                      <span>私有目标（秘密）</span>
+                      <input id="genericCardSecret" maxlength="80" placeholder="只写进角色私有账本，不进入其他角色上下文。">
+                    </label>
+                    <label class="field">
+                      <span>核心特质</span>
+                      <input id="genericCardTraits" maxlength="60" placeholder="用顿号分隔，例如：耐心、克制、好奇">
+                    </label>
+                    <label class="field">
+                      <span>初始关系</span>
+                      <input id="genericCardRelation" maxlength="60" placeholder="例如：对陌生人先观察">
+                    </label>
+                    <label class="field">
+                      <span>首选模型</span>
+                      <input id="genericCardModel" value="A · narrative-x-32k">
+                    </label>
+                    <label class="field">
+                      <span>备选模型</span>
+                      <input id="genericCardFallback" value="B · novel-z">
+                    </label>
+                  </div>
+                  <div class="wizard-actions">
+                    <button type="button" class="ghost-btn ai-assist-trigger" data-ai-open="genericCard">✦ AI 帮忙生成</button>
+                    <button type="button" class="ghost-btn" data-close-generic-card-creator>取消</button>
+                    <button type="submit" class="primary-btn">保存通用角色卡</button>
+                  </div>
+                </form>
+                <div class="ai-assist-pane" id="genericCardAiPane" data-ai-pane="genericCard" hidden></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="view" data-view="cast" id="view-cast" hidden>
+            <div class="page-head">
+              <button class="back-link" type="button" data-nav="story">← 返回会话</button>
+              <h1>在场的人</h1>
+              <p id="charLead">本会话的角色快照。世界角色卡在对应世界书内维护，这里只记录本会话的在场角色、关系与见证。</p>
+            </div>
+
+            <div class="char-layout">
+              <div class="char-list" id="charTabs" role="tablist" aria-label="角色列表"></div>
+
+              <div class="char-detail" id="charDetail">
+                <div class="empty-state" id="charEmpty" hidden>
+                  <strong>当前世界还没有角色卡</strong>
+                  <p>角色卡决定谁在场、谁掌握秘密、使用哪个模型。至少添加一张后，角色账才会开始记录。</p>
+                  <button type="button" class="primary-btn" data-nav="worlds">去创建角色卡</button>
+                </div>
+                <div class="char-hero">
+                  <span class="avatar avatar-lg" id="charAvatar">砚</span>
+                  <div class="char-hero-text">
+                    <span class="page-kicker" id="charRole">守夜人 · 第七码头</span>
+                    <h2 id="charName">沈砚</h2>
+                    <p id="charState">目标：查清昨夜失踪的货船 · 心情：警惕 · 位置：第七码头</p>
+                  </div>
+                  <span class="status-pill">在场</span>
+                </div>
+
+                <div class="detail-grid">
+                  <section class="card">
+                    <div class="card-head"><h3>关系</h3><span>单次变化 ≤ 0.15</span></div>
+                    <div class="rel-list" id="charRelations">
+                      <div class="rel-row" data-rel="trust"><span>信任</span><div class="rel-track"><i style="width:34%"></i></div><b>0.34</b></div>
+                      <div class="rel-row" data-rel="affection"><span>好感</span><div class="rel-track"><i style="width:18%"></i></div><b>0.18</b></div>
+                      <div class="rel-row" data-rel="fear"><span>恐惧</span><div class="rel-track"><i style="width:12%"></i></div><b>0.12</b></div>
+                      <div class="rel-row" data-rel="respect"><span>尊重</span><div class="rel-track"><i style="width:46%"></i></div><b>0.46</b></div>
+                    </div>
+                    <p class="card-note" id="charRelationNote">关系变化必须附事件 id 与叙述理由。</p>
+                  </section>
+
+                  <section class="card">
+                    <div class="card-head"><h3>模型绑定</h3><span>随角色卡版本化</span></div>
+                    <div class="binding">
+                      <div><span>首选</span><strong id="charModel">供应商 A · 模型 X</strong></div>
+                      <div><span>备选</span><strong id="charFallback">供应商 B · 模型 Y</strong></div>
+                    </div>
+                    <p class="card-note">主模型限流或超时时按备选降级，并在对话中提示。</p>
+                    <button class="link-btn" id="castModelLink" type="button">调整本会话模型 →</button>
+                  </section>
+                </div>
+
+                <section class="card">
+                  <div class="card-head"><h3>性格三层</h3><span>core 不参与日常更新</span></div>
+                  <div class="trait-groups" id="charTraits"></div>
+                </section>
+
+                <section class="card">
+                  <div class="card-head"><h3>最近 3 个性格时刻</h3><span>可否定，否定后置信度下降</span></div>
+                  <div class="moment-list" id="charMoments"></div>
+                </section>
+
+                <section class="card">
+                  <div class="card-head"><h3>他知道什么</h3><span>来源 · 见证人 · 秘密标记</span></div>
+                  <div class="knowledge-list" id="charKnowledge"></div>
+                </section>
+              </div>
+            </div>
+          </section>
+
+          <section class="view" data-view="recap" id="view-recap" hidden>
+            <div class="page-head">
+              <button class="back-link" type="button" data-nav="story">← 返回会话</button>
+              <h1 id="recapTitle">第七码头复盘</h1>
+              <p id="recapDesc">你在没有灯的码头度过了一夜。货船没有回来，白塔第一次出现在雾里。</p>
+            </div>
+
+            <div class="stat-grid" id="recapStats">
+              <div class="stat"><span>实际轮次</span><strong>9 <small>/ 12</small></strong><em>提前结算</em></div>
+              <div class="stat"><span>在场角色</span><strong>4 <small>/ 4</small></strong><em>无超限</em></div>
+              <div class="stat"><span>使用节点</span><strong>18 <small>/ 24</small></strong><em>预算内</em></div>
+              <div class="stat"><span>未闭线程</span><strong>3</strong><em>下单元回收</em></div>
+            </div>
+
+            <section class="recap-block">
+              <div class="section-head"><h2>关键选择</h2></div>
+              <ol class="timeline" id="recapChoices">
+                <li>
+                  <span class="time">戌时</span>
+                  <div>
+                    <strong>先观察码头，而不是追问沈砚</strong>
+                    <p>沈砚注意到你藏信的动作；阿箬在栈桥尽头折返。</p>
+                    <span class="event-id">evt_1051 · 谨慎</span>
+                  </div>
+                </li>
+                <li>
+                  <span class="time">亥时</span>
+                  <div>
+                    <strong>跟上提灯的孩子</strong>
+                    <p>得知青灯能照出雾里的路；沈砚信任 -0.03。</p>
+                    <span class="event-id">evt_1063 · 冒险</span>
+                  </div>
+                </li>
+                <li>
+                  <span class="time">子时</span>
+                  <div>
+                    <strong>白塔出现时，没有登船</strong>
+                    <p>开启线程“白塔的方位”；获得物品“半枚铜钥匙”。</p>
+                    <span class="event-id">evt_1077 · 克制</span>
+                  </div>
+                </li>
+              </ol>
+            </section>
+
+            <section class="recap-block">
+              <div class="section-head"><h2>关系变化</h2></div>
+              <div class="delta-list" id="recapDeltas">
+                <div class="delta-row">
+                  <span class="avatar av-shen">砚</span>
+                  <div><strong>沈砚</strong><p>你替他隐瞒了货船记录缺页的事。</p></div>
+                  <span class="delta up">信任 +0.08</span>
+                </div>
+                <div class="delta-row">
+                  <span class="avatar av-ruo">箬</span>
+                  <div><strong>阿箬</strong><p>你替她提灯走完了最后一段栈桥。</p></div>
+                  <span class="delta up">好感 +0.05</span>
+                </div>
+                <div class="delta-row">
+                  <span class="avatar av-su">晚</span>
+                  <div><strong>苏晚</strong><p>你买走了她最后一包止血粉。</p></div>
+                  <span class="delta up">信任 +0.02</span>
+                </div>
+              </div>
+            </section>
+
+            <section class="recap-block">
+              <div class="section-head"><h2>未闭线程</h2></div>
+              <div class="thread-list" id="recapThreads">
+                <div class="thread"><span class="thread-dot new"></span><div><strong>无署名的信</strong><p>信仍未拆开。沈砚知道它在你身上。</p></div><span class="thread-state">新</span></div>
+                <div class="thread"><span class="thread-dot"></span><div><strong>白塔的方位</strong><p>白塔在雾里出现过一次，位置与阿箬的航线重合。</p></div><span class="thread-state">进行中</span></div>
+                <div class="thread"><span class="thread-dot"></span><div><strong>昨夜失踪的货船</strong><p>船上的灯油是给白塔的。沈砚的记录少了一页。</p></div><span class="thread-state">进行中</span></div>
+              </div>
+            </section>
+
+            <section class="recap-block">
+              <div class="section-head"><h2>范围计划与实际</h2></div>
+              <div class="scope-table" id="recapScope">
+                <div class="scope-tr scope-th"><span>项目</span><span>计划</span><span>实际</span><span>偏差</span></div>
+                <div class="scope-tr"><span>单元轮次</span><span>12</span><span>9</span><span class="warn">-25%</span></div>
+                <div class="scope-tr"><span>使用节点</span><span>24</span><span>18</span><span class="warn">-25%</span></div>
+                <div class="scope-tr"><span>激活角色</span><span>4</span><span>4</span><span class="ok">0%</span></div>
+                <div class="scope-tr"><span>单轮调用</span><span>≤ 5</span><span>4.2</span><span class="ok">-16%</span></div>
+              </div>
+              <p class="card-note" id="recapNote">提前结算原因：连续 2 轮无状态变更，按 FR-54 压缩单元，不填充无事件内容。</p>
+            </section>
+
+            <div class="recap-foot">
+              <button class="primary-btn" id="nextUnit">开启第二单元 →</button>
+            </div>
+          </section>
+
+          <section class="view" data-view="settings" id="view-settings" hidden>
+            <div class="page-head provider-page-head">
+              <h1>提供商</h1>
+            </div>
+
+            <div class="provider-panel">
+              <div class="provider-panel-head">
+                <h2>已连接的提供商</h2>
+                <button type="button" class="primary-btn provider-new" id="openCustomProvider">＋ 新建</button>
+              </div>
+              <div class="provider-list" id="providerList" aria-label="已连接的提供商"></div>
+            </div>
+
+            <section class="card">
+              <div class="card-head"><h3>近期用量</h3><span>按供应商与模型聚合</span></div>
+              <div class="usage-grid">
+                <div><span>Tokens</span><strong>38,420</strong></div>
+                <div><span>估算费用</span><strong>¥0.42</strong></div>
+                <div><span>降级</span><strong>1 次</strong></div>
+              </div>
+            </section>
+
+            <section class="card">
+              <div class="card-head"><h3>数据去向</h3><span>发送前明确告知</span></div>
+              <p class="body-text">你的输入、世界状态摘要与角色上下文将发送至所选供应商。跨境传输按适用法规提示并取得同意。</p>
+              <div class="inline-actions">
+                <button class="ghost-btn" data-toast="已打开供应商清单（原型）">查看供应商清单</button>
+                <button class="ghost-btn danger" data-toast="凭据已撤销（原型）">撤销凭据</button>
+              </div>
+            </section>
+
+            <section class="card compliance">
+              <div class="card-head"><h3>内容标识与安全</h3><span>首屏与设置页常驻</span></div>
+              <div class="compliance-row"><span class="ai-chip">AI 生成</span><p>叙事内容由 AI 生成，可能包含不准确或不合预期的内容。</p></div>
+              <div class="compliance-row"><span class="status-pill">举报</span><p>举报入口在正文末尾与设置页同时可见，24 小时内处理。</p></div>
+            </section>
+
+            <div class="modal" id="customProviderModal" hidden>
+              <div class="modal-backdrop" data-close-provider></div>
+              <div class="modal-card provider-modal" role="dialog" aria-modal="true" aria-labelledby="customProviderTitle">
+                <form id="customProviderForm" novalidate>
+                  <div class="provider-modal-top">
+                    <button type="button" class="provider-icon-btn" data-close-provider aria-label="返回">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </button>
+                    <button type="button" class="provider-icon-btn" data-close-provider aria-label="关闭">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+                    </button>
+                  </div>
+
+                  <div class="provider-modal-title">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l1.9 5.2L19 10l-5.1 2L12 17.2 10.1 12 5 10l5.1-2L12 2.8Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M19 15.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7.7-1.8Z" fill="currentColor"/></svg>
+                    <h3 id="customProviderTitle">自定义提供商</h3>
+                  </div>
+                  <p class="provider-modal-desc">配置与 OpenAI 兼容的提供商。请查看
+                    <button type="button" class="doc-link" data-toast="提供商配置文档（原型）">提供商配置文档</button>。
+                  </p>
+
+                  <div class="provider-form">
+                    <label class="field">
+                      <span>提供商 ID</span>
+                      <input id="customProviderId" autocomplete="off" spellcheck="false" placeholder="myprovider" aria-describedby="customProviderIdError">
+                      <small class="field-hint">使用小写字母、数字、连字符或下划线</small>
+                      <small class="field-error" id="customProviderIdError" hidden></small>
+                    </label>
+                    <label class="field">
+                      <span>显示名称</span>
+                      <input id="customProviderName" maxlength="40" autocomplete="off" placeholder="我的 AI 提供商" aria-describedby="customProviderNameError">
+                      <small class="field-error" id="customProviderNameError" hidden></small>
+                    </label>
+                    <label class="field">
+                      <span>基础 URL</span>
+                      <input id="customProviderBase" type="url" autocomplete="off" spellcheck="false" placeholder="https://api.myprovider.com/v1" aria-describedby="customProviderBaseError">
+                      <small class="field-error" id="customProviderBaseError" hidden></small>
+                    </label>
+                    <label class="field">
+                      <span>API 密钥</span>
+                      <input id="customProviderKey" type="password" autocomplete="new-password" placeholder="API 密钥">
+                      <small class="field-hint">可选。如果你通过请求头管理认证，可留空。</small>
+                    </label>
+                  </div>
+
+                  <div class="wizard-actions">
+                    <button type="button" class="ghost-btn" data-close-provider>取消</button>
+                    <button type="submit" class="primary-btn">保存并连接</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </section>
+
+        </main>
+
+        <aside class="context-rail" id="contextRail" aria-label="当前状态">
+          <button class="panel-close" id="panelClose" type="button" aria-label="收起状态侧栏">收起</button>
+          <div class="panel">
+            <div class="panel-title"><span>在场角色</span><span id="sceneCount">2 人</span></div>
+            <div id="contextActors"></div>
+            <button class="panel-link" data-nav="cast">查看本会话角色 →</button>
+          </div>
+
+          <div class="panel">
+            <div class="panel-title"><span>未闭线程</span><span id="threadCount">3</span></div>
+            <div id="contextThreads"></div>
+            <button class="panel-link" data-nav="recap">查看单元复盘 →</button>
+          </div>
+
+          <div class="panel">
+            <div class="panel-title"><span>最近变化</span><span>本轮</span></div>
+            <div id="contextChanges"></div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-title"><span>本轮运行</span><span>正常</span></div>
+            <div class="runtime" id="contextRuntime"></div>
+            <button class="panel-link" id="contextModelLink" type="button">调整本会话模型 →</button>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </div>
+
+  <nav class="mobile-nav" aria-label="移动端导航">
+    <button class="mobile-nav-item active" data-nav="sessions"><span>话</span><small>会话</small></button>
+    <button class="mobile-nav-item" data-nav="worlds"><span>界</span><small>世界</small></button>
+    <button class="mobile-nav-item" data-nav="cards"><span>人</span><small>角色</small></button>
+    <button class="mobile-nav-item" data-nav="settings"><span>商</span><small>提供商</small></button>
+  </nav>
+
+  <div class="scrim" id="scrim"></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="assets/app.js"></script>
+</body>
+</html>
