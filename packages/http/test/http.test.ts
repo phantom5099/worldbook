@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { AgentService, sessionTurnIds } from '@worldbook/agent'
 import { ContextService } from '@worldbook/context'
-import { MockModelClient } from '@worldbook/model'
+import { MockModelClient } from '@worldbook/model/testing'
 import { EventSink } from '@worldbook/sink'
 import { SessionService } from '@worldbook/session'
 import { MemoryStore } from '@worldbook/session/testing'

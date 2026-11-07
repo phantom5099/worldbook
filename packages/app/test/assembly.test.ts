@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MockModelClient } from '@worldbook/model'
+import { MockModelClient } from '@worldbook/model/testing'
 import { MemoryStore } from '@worldbook/session/testing'
 import { createApp } from '../src/index.js'
 

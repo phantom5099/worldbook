@@ -45,6 +45,7 @@ pnpm workspace 根在仓库根（`pnpm-workspace.yaml` → `packages/*`）。每
 - 测试必须独立、确定、可任意顺序执行，不依赖执行顺序或共享可变状态（每个用例自备数据并自行清理）。
 - 不为「将来可能的变化」预留用例，只覆盖当前真实存在的行为。
 - 新增 / 删除测试前先取得用户许可。
+- 测试替身（mock 客户端、内存存储、测试服务等）放在包内 `testing/` 目录，经 `package.json` 的 `./testing` 导出子路径对外提供（如 `@worldbook/model/testing`）；生产源码与主入口只放真实实现，不导出测试替身。
 
 ## 模块地图与依赖方向
 
@@ -62,7 +63,7 @@ http ← subagent（子代理状态端点）
 | `session` | 事件类型定义；事件追加（seq 分配）、历史获取；PostgresSessionStore（MemoryStore 在 `testing` 子路径） |
 | `turn` | turn 状态机：claim（异步、按 session 互斥）、settle 幂等唯一终态、getState 快照；回合号由持久化日志续接 |
 | `sink` | 会话级有序帧队列：transition / event / delta；流式帧不落库 |
-| `model` | ModelClient 接口；Mock 实现（测试）与 OpenAI 官方 SDK 实现（baseURL 覆盖）；供应商预置表 |
+| `model` | ModelClient 接口；OpenAI 官方 SDK 实现（baseURL 覆盖）；供应商预置表；MockModelClient 在 `testing` 子路径 |
 | `tool` | ToolDefinition（Zod 参数必选、输出 schema 可选）；`ToolService`（cordis 服务 `tools`，`register` 返回 disposer）；`builtinTools` 插件自注册内置工具；`list()` 按当前注册投影 specs；executeBatch 统一错误兜底 |
 | `context` | 事件日志 → LLM 消息投影（纯函数，快照附带覆盖的 seq）；压缩不在此版 |
 | `agent` | LoopFactory 纯函数（turn/step 两级循环）；AgentService.start / wake 入口（活跃 turn 唤醒挂起、收尾按需补开）；孤儿 turn 修复 |

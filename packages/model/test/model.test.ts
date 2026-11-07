@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MockModelClient } from '../src/index.js'
+import { MockModelClient } from '../testing/mock-model.js'
 import { OpenAICompatClient, toOpenAiMessages, toOpenAiTools } from '../src/openai.js'
 import type { ModelMessage } from '../src/index.js'
 

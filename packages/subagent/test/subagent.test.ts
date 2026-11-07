@@ -6,7 +6,7 @@ import { ContextService } from '@worldbook/context'
 import { EventSink } from '@worldbook/sink'
 import { TurnRegistry } from '@worldbook/turn'
 import { createTestToolService } from '@worldbook/tool/testing'
-import { MockModelClient } from '@worldbook/model'
+import { MockModelClient } from '@worldbook/model/testing'
 import { AgentService, sessionTurnIds } from '@worldbook/agent'
 import { SubagentService } from '../src/index.js'
 import {
