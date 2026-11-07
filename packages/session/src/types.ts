@@ -3,8 +3,6 @@ export type SessionId = string
 export type SessionEventType =
   | 'turn_started'
   | 'turn_ended'
-  | 'step_started'
-  | 'step_ended'
   | 'user_message'
   | 'assistant_message'
   | 'tool_call'

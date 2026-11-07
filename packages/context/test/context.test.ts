@@ -114,13 +114,11 @@ describe('projectMessages', () => {
     ])
   })
 
-  it('turn/step/tool_call/spawned 等审计事件不进入上下文', () => {
+  it('turn/tool_call/spawned 等审计事件不进入上下文', () => {
     const messages = projectMessages([
       event('turn_started', {}),
-      event('step_started', { step: 0 }),
       event('tool_call', { callId: 'c9', name: 'x', args: {} }),
       event('subagent_spawned', {}),
-      event('step_ended', { step: 0 }),
       event('turn_ended', { reason: 'done' }),
     ])
     expect(messages).toEqual([])

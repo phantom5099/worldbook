@@ -88,9 +88,7 @@ export function createLoop(deps: LoopDeps) {
           break
         }
         steps += 1
-        await emitEvent('step_started', { step: steps })
         const stepReason = await runStep(sessionId, claim.turnId, signal, emitEvent, opts.onContextRead)
-        await emitEvent('step_ended', { step: steps })
         if (stepReason) {
           reason = stepReason
           break

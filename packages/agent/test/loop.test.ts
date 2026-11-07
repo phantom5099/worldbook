@@ -64,21 +64,17 @@ describe('agent loop', () => {
     expect(history.map((e) => e.type)).toEqual([
       'turn_started',
       'user_message',
-      'step_started',
       'assistant_message',
-      'step_ended',
       'turn_ended',
     ])
-    expect(history[3]!.payload).toMatchObject({ text: '你好', usage: { inputTokens: 5, outputTokens: 2 } })
-    expect(history[5]!.payload).toMatchObject({ reason: 'done', steps: 1 })
+    expect(history[2]!.payload).toMatchObject({ text: '你好', usage: { inputTokens: 5, outputTokens: 2 } })
+    expect(history[3]!.payload).toMatchObject({ reason: 'done', steps: 1 })
 
     const frameTypes = collected.filter((f) => f.kind === 'event').map((f) => f.type)
     expect(frameTypes).toEqual([
       'turn_started',
       'user_message',
-      'step_started',
       'assistant_message',
-      'step_ended',
       'turn_ended',
     ])
     expect(collected.filter((f) => f.kind === 'delta').map((f) => (f.kind === 'delta' ? f.text : ''))).toEqual([
@@ -108,24 +104,20 @@ describe('agent loop', () => {
     expect(history.map((e) => e.type)).toEqual([
       'turn_started',
       'user_message',
-      'step_started',
       'assistant_message',
       'tool_call',
       'tool_result',
-      'step_ended',
-      'step_started',
       'assistant_message',
-      'step_ended',
       'turn_ended',
     ])
-    expect(history[4]!.payload).toMatchObject({ calls: [{ callId: 'call_1', name: 'echo' }] })
-    expect(history[5]!.payload).toMatchObject({
+    expect(history[3]!.payload).toMatchObject({ calls: [{ callId: 'call_1', name: 'echo' }] })
+    expect(history[4]!.payload).toMatchObject({
       callId: 'call_1',
       name: 'echo',
       status: 'ok',
       result: '"ping"',
     })
-    expect(history[10]!.payload).toMatchObject({ reason: 'done', steps: 2 })
+    expect(history[6]!.payload).toMatchObject({ reason: 'done', steps: 2 })
 
     const secondRequest = model.requests[1]!
     expect(secondRequest.messages).toEqual([
@@ -152,7 +144,7 @@ describe('agent loop', () => {
     const handle = await makeAgent().start(sessionId, 'x')
     expect(await handle.done).toBe('done')
     const history = await session.getHistory(sessionId)
-    expect(history[5]!.payload).toMatchObject({ callId: 'call_1', status: 'error', result: '炸了' })
+    expect(history[4]!.payload).toMatchObject({ callId: 'call_1', status: 'error', result: '炸了' })
     expect(history[history.length - 1]!.payload).toMatchObject({ reason: 'done' })
   })
 
@@ -385,9 +377,7 @@ describe('agent loop', () => {
       'turn_ended',
       'turn_started',
       'user_message',
-      'step_started',
       'assistant_message',
-      'step_ended',
       'turn_ended',
     ])
     expect(history[2]!.payload).toEqual({ reason: 'interrupted', steps: 0 })
