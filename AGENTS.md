@@ -15,7 +15,7 @@ AI 文字开放世界：单人、文字优先的 AI 叙事游戏。
 |---|---|---|
 | `packages/` | 服务端运行时，pnpm workspace 多包（`@worldbook/*`，本仓库当前主体） | 规范见其下 `packages/AGENTS.md` |
 | `scripts/` | 命令行入口：`migrate.ts`（数据库迁移）、`smoke.ts`（临时端到端冒烟，前端就绪后废弃） | 跑 `pnpm migrate` / `pnpm smoke` 时 |
-| `web/` | 前端（未启动） | — |
+| `web/` | Vue 3 前端（Vite + Pinia + Vue Router），多数数据源使用本地 mock，会话可切换为 HTTP/SSE | 改前端时；规范见其下 `web/AGENTS.md` |
 
 ## 工作规范
 
@@ -37,4 +37,5 @@ AI 文字开放世界：单人、文字优先的 AI 叙事游戏。
 Node ≥ 22，包管理器 pnpm（workspace 根在仓库根）。当前无数据库实例时，涉及 PostgreSQL 的集成测试自动跳过（见 `packages/session/test/`）。
 
 - 命令：`pnpm test` / `pnpm typecheck` / `pnpm migrate`（数据库迁移，需 `DATABASE_URL`）/ `pnpm start`（进程入口）/ `pnpm smoke [-- --live]`（端到端冒烟）。
-- 环境配置：`APP_ENV`（development/production）选择仓库根的 `.env.<APP_ENV>`（已 gitignore，需自建）；模型供应商经 `MODEL_PRESET`（deepseek/gpt/glm）选预置，API key 放对应预置声明的环境变量。
+- 前端命令：在 `web/` 下 `pnpm dev` / `pnpm test` / `pnpm typecheck` / `pnpm build`，或在仓库根 `pnpm --filter @worldbook/web <script>`。
+- 环境配置：`APP_ENV`（development/production）选择仓库根的 `.env.<APP_ENV>`（已 gitignore，需自建）；模型供应商经 `MODEL_PRESET`（deepseek/gpt/glm）选预置，API key 放对应预置声明的环境变量。前端使用 `VITE_API_BASE`（会话接口基地址）、`VITE_SESSION_MODE=mock`（会话改用本地模拟）与开发代理目标 `API_TARGET`。
