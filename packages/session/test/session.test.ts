@@ -1,0 +1,132 @@
+import { describe, expect, it } from 'vitest'
+import { SessionService } from '../src/index.js'
+import { MemoryStore } from '../testing/memory-store.js'
+import type { SessionEvent, SessionEventType, SessionId } from '../src/types.js'
+
+class FakeStore extends MemoryStore {
+  failNextInsert: Error | null = null
+  insertCalls = 0
+
+  override async insertEvents(
+    sessionId: SessionId,
+    events: ReadonlyArray<SessionEvent>,
+  ): Promise<void> {
+    this.insertCalls++
+    if (this.failNextInsert) {
+      const error = this.failNextInsert
+      this.failNextInsert = null
+      throw error
+    }
+    await super.insertEvents(sessionId, events)
+  }
+}
+
+describe('SessionService.append', () => {
+  it('从 1 开始连续分配 seq，一次批量落库', async () => {
+    const store = new FakeStore()
+    const id = await store.createSession({})
+    const service = new SessionService(store)
+    const events = await service.append(id, [
+      { type: 'turn_started', payload: {} },
+      { type: 'user_message', payload: { text: 'hi' } },
+      { type: 'turn_ended', payload: { reason: 'done' } },
+    ])
+    expect(events.map((event) => event.seq)).toEqual([1, 2, 3])
+    expect(store.insertCalls).toBe(1)
+    expect((await service.getHistory(id)).length).toBe(3)
+  })
+
+  it('计数器从既有 maxSeq 初始化，跨实例续接 seq', async () => {
+    const store = new FakeStore()
+    const id = await store.createSession({})
+    const first = new SessionService(store)
+    await first.append(id, [{ type: 'user_message', payload: 'a' }])
+    await first.append(id, [{ type: 'assistant_message', payload: 'b' }])
+
+    const second = new SessionService(store)
+    const events = await second.append(id, [{ type: 'user_message', payload: 'c' }])
+    expect(events[0]!.seq).toBe(3)
+  })
+
+  it('落库失败时丢弃计数器，下次 append 从 DB 重新初始化', async () => {
+    const store = new FakeStore()
+    const id = await store.createSession({})
+    const service = new SessionService(store)
+    await service.append(id, [{ type: 'user_message', payload: 'a' }])
+
+    store.failNextInsert = new Error('db down')
+    await expect(
+      service.append(id, [{ type: 'user_message', payload: 'lost' }]),
+    ).rejects.toThrow('db down')
+
+    const events = await service.append(id, [{ type: 'user_message', payload: 'retried' }])
+    expect(events[0]!.seq).toBe(2)
+    expect((await service.getHistory(id)).length).toBe(2)
+  })
+
+  it('空批量不触发落库', async () => {
+    const store = new FakeStore()
+    const id = await store.createSession({})
+    const service = new SessionService(store)
+    await expect(service.append(id, [])).resolves.toEqual([])
+    expect(store.insertCalls).toBe(0)
+    expect(await store.maxSeq(id)).toBe(0)
+  })
+
+  it('冷会话并发 append 不分配重复 seq', async () => {
+    const store = new FakeStore()
+    const id = await store.createSession({})
+    const service = new SessionService(store)
+
+    const [first, second] = await Promise.all([
+      service.append(id, [{ type: 'turn_started', payload: {} }]),
+      service.append(id, [{ type: 'subagent_message', payload: { content: '插话' } }]),
+    ])
+    expect([first[0]!.seq, second[0]!.seq]).toEqual([1, 2])
+
+    const history = await service.getHistory(id)
+    expect(history.map((event) => event.seq)).toEqual([1, 2])
+  })
+
+  it('append 后历史按 seq 升序返回，afterSeq 与 limit 生效', async () => {
+    const store = new FakeStore()
+    const id = await store.createSession({})
+    const service = new SessionService(store)
+    const types: SessionEventType[] = ['user_message', 'assistant_message', 'user_message', 'assistant_message']
+    await service.append(id, types.map((type) => ({ type, payload: null })))
+
+    const all = await service.getHistory(id)
+    expect(all.map((event) => event.seq)).toEqual([1, 2, 3, 4])
+
+    const after = await service.getHistory(id, { afterSeq: 2 })
+    expect(after.map((event) => event.seq)).toEqual([3, 4])
+
+    const limited = await service.getHistory(id, { afterSeq: 0, limit: 2 })
+    expect(limited.map((event) => event.seq)).toEqual([1, 2])
+  })
+})
+
+describe('SessionService 会话生命周期', () => {
+  it('createSession / getSession / setStatus 透传 store', async () => {
+    const store = new FakeStore()
+    const service = new SessionService(store)
+    const id = await service.createSession({ parentId: undefined, depth: 0 })
+    expect(await service.getSession(id)).toMatchObject({ id, status: 'active' })
+    await service.setStatus(id, 'closed')
+    expect((await service.getSession(id))!.status).toBe('closed')
+    expect(await service.getSession('missing')).toBeUndefined()
+  })
+
+  it('同一批 append 的事件共享一个 createdAt', async () => {
+    const store = new FakeStore()
+    const id = await store.createSession({})
+    const service = new SessionService(store)
+    await service.append(id, [
+      { type: 'user_message', payload: 'x' },
+      { type: 'assistant_message', payload: 'y' },
+    ])
+    const [first, second] = await service.getHistory(id)
+    expect(first!.createdAt).toBeInstanceOf(Date)
+    expect(first!.createdAt.getTime()).toBe(second!.createdAt.getTime())
+  })
+})

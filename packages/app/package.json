@@ -1,0 +1,21 @@
+{
+  "name": "@worldbook/app",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@cordisjs/core": "^3.18.1",
+    "@worldbook/agent": "workspace:*",
+    "@worldbook/context": "workspace:*",
+    "@worldbook/db": "workspace:*",
+    "@worldbook/model": "workspace:*",
+    "@worldbook/session": "workspace:*",
+    "@worldbook/sink": "workspace:*",
+    "@worldbook/subagent": "workspace:*",
+    "@worldbook/tool": "workspace:*",
+    "@worldbook/turn": "workspace:*"
+  }
+}

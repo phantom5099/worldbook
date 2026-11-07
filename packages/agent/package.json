@@ -1,0 +1,20 @@
+{
+  "name": "@worldbook/agent",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@worldbook/context": "workspace:*",
+    "@worldbook/model": "workspace:*",
+    "@worldbook/session": "workspace:*",
+    "@worldbook/sink": "workspace:*",
+    "@worldbook/tool": "workspace:*",
+    "@worldbook/turn": "workspace:*"
+  },
+  "devDependencies": {
+    "zod": "^4.6.7"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "@worldbook/session",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./testing": "./testing/memory-store.ts"
+  },
+  "dependencies": {
+    "postgres": "^4.0.0"
+  },
+  "devDependencies": {
+    "@worldbook/db": "workspace:*"
+  }
+}

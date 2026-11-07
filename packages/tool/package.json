@@ -1,0 +1,14 @@
+{
+  "name": "@worldbook/tool",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./testing": "./testing/tool-service.ts"
+  },
+  "dependencies": {
+    "@cordisjs/core": "^3.18.1",
+    "zod": "^4.6.7"
+  }
+}

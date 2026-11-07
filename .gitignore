@@ -10,3 +10,12 @@ Thumbs.db
 .env
 .env.*
 *.log
+
+# Dependencies (pnpm workspace links / central store)
+node_modules/
+
+# Build artifacts
+dist/
+*.tsbuildinfo
+coverage/
+docs-hide/

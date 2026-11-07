@@ -1,0 +1,216 @@
+import { createServer } from 'node:http'
+import type { IncomingMessage, ServerResponse } from 'node:http'
+import { TurnAlreadyActiveError } from '@worldbook/turn'
+import type { AgentService } from '@worldbook/agent'
+import type { SessionMeta, SessionService } from '@worldbook/session'
+import type { EventSink } from '@worldbook/sink'
+import type { SubagentService } from '@worldbook/subagent'
+
+interface HttpDeps {
+  session: SessionService
+  sink: EventSink
+  agent: AgentService
+  subagent: SubagentService
+}
+
+export interface HttpOptions {
+  port: number
+  host?: string
+}
+
+export interface HttpServerHandle {
+  start(): Promise<void>
+  port(): number
+  stop(): Promise<void>
+}
+
+const HEARTBEAT_MS = 15_000
+
+function sendJson(res: ServerResponse, status: number, body: unknown): void {
+  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
+  res.end(JSON.stringify(body))
+}
+
+function readJsonBody(req: IncomingMessage): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = []
+    req.on('data', (chunk: Buffer) => chunks.push(chunk))
+    req.on('end', () => {
+      if (chunks.length === 0) {
+        resolve(undefined)
+        return
+      }
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown)
+      } catch {
+        reject(new Error('请求体不是合法 JSON'))
+      }
+    })
+    req.on('error', reject)
+  })
+}
+
+function sseWrite(res: ServerResponse, frame: unknown): void {
+  res.write(`data: ${JSON.stringify(frame)}\n\n`)
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+async function ensureSession(deps: HttpDeps, sessionId: string, res: ServerResponse): Promise<boolean> {
+  if (await deps.session.getSession(sessionId)) return true
+  sendJson(res, 404, { error: `session ${sessionId} not found` })
+  return false
+}
+
+async function streamSession(
+  deps: HttpDeps,
+  sessionId: string,
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  if (!(await ensureSession(deps, sessionId, res))) return
+  res.writeHead(200, {
+    'content-type': 'text/event-stream; charset=utf-8',
+    'cache-control': 'no-cache',
+    connection: 'keep-alive',
+  })
+
+  const iterator = deps.sink.attach(sessionId)[Symbol.asyncIterator]()
+  let closed = false
+  const heartbeat = setInterval(() => {
+    if (!closed) res.write(': ping\n\n')
+  }, HEARTBEAT_MS)
+  req.on('close', () => {
+    closed = true
+    clearInterval(heartbeat)
+    void iterator.return?.()
+  })
+
+  try {
+    while (true) {
+      const { done, value } = await iterator.next()
+      if (done || closed) break
+      sseWrite(res, value)
+    }
+  } finally {
+    clearInterval(heartbeat)
+    await iterator.return?.()
+  }
+  if (!closed) res.end()
+}
+
+export function createHttpServer(deps: HttpDeps, opts: HttpOptions): HttpServerHandle {
+  const server = createServer((req, res) => {
+    void route(req, res).catch((err: unknown) => {
+      if (!res.headersSent) {
+        sendJson(res, 500, { error: err instanceof Error ? err.message : String(err) })
+      } else {
+        res.destroy()
+      }
+    })
+  })
+
+  async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const url = new URL(req.url ?? '/', 'http://localhost')
+    const sessionMatch = url.pathname.match(/^\/sessions\/([^/]+)(\/stream|\/history|\/subagents)?$/)
+
+    if (req.method === 'POST' && url.pathname === '/sessions') {
+      const body = await readJsonBody(req)
+      if (body !== undefined && !isPlainObject(body)) {
+        sendJson(res, 400, { error: '请求体须为对象（可选 meta 字段）' })
+        return
+      }
+      const meta = (body as { meta?: unknown } | undefined)?.meta
+      if (meta !== undefined && !isPlainObject(meta)) {
+        sendJson(res, 400, { error: 'meta 须为对象' })
+        return
+      }
+      // 父子关系由子代理服务建立：客户端指定会伪造会话树并绕过深度上限。
+      if (meta !== undefined && ('parentId' in meta || 'depth' in meta)) {
+        sendJson(res, 400, { error: 'meta 不允许设置 parentId/depth：子会话只能由服务端创建' })
+        return
+      }
+      const sessionId = await deps.session.createSession((meta ?? {}) as SessionMeta)
+      sendJson(res, 201, { sessionId })
+      return
+    }
+
+    if (req.method === 'POST' && url.pathname === '/turns') {
+      const body = (await readJsonBody(req)) as
+        | { sessionId?: unknown; input?: unknown }
+        | undefined
+      if (
+        !body ||
+        typeof body.sessionId !== 'string' ||
+        typeof body.input !== 'string' ||
+        body.sessionId === '' ||
+        body.input === ''
+      ) {
+        sendJson(res, 400, { error: '请求体须为 {sessionId, input}，两者均为非空字符串' })
+        return
+      }
+      if (!(await ensureSession(deps, body.sessionId, res))) return
+      try {
+        const handle = await deps.agent.start(body.sessionId, body.input)
+        sendJson(res, 202, { turnId: handle.turnId })
+      } catch (err) {
+        if (err instanceof TurnAlreadyActiveError) {
+          sendJson(res, 409, { error: err.message })
+        } else {
+          throw err
+        }
+      }
+      return
+    }
+
+    if (req.method === 'GET' && sessionMatch?.[1] && sessionMatch[2] === '/stream') {
+      await streamSession(deps, sessionMatch[1], req, res)
+      return
+    }
+
+    if (req.method === 'GET' && sessionMatch?.[1] && sessionMatch[2] === '/history') {
+      const sessionId = sessionMatch[1]
+      if (!(await ensureSession(deps, sessionId, res))) return
+      const events = await deps.session.getHistory(sessionId)
+      sendJson(res, 200, { sessionId, events })
+      return
+    }
+
+    if (req.method === 'GET' && sessionMatch?.[1] && sessionMatch[2] === '/subagents') {
+      const sessionId = sessionMatch[1]
+      if (!(await ensureSession(deps, sessionId, res))) return
+      const subagents = await deps.subagent.listChildren(sessionId)
+      sendJson(res, 200, { sessionId, subagents })
+      return
+    }
+
+    sendJson(res, 404, { error: `no route: ${req.method} ${url.pathname}` })
+  }
+
+  let actualPort: number | undefined
+
+  return {
+    start(): Promise<void> {
+      return new Promise((resolve, reject) => {
+        server.once('error', reject)
+        server.listen(opts.port, opts.host, () => {
+          const address = server.address()
+          actualPort = typeof address === 'object' && address ? address.port : opts.port
+          resolve()
+        })
+      })
+    },
+    port(): number {
+      if (actualPort === undefined) throw new Error('HTTP server not started')
+      return actualPort
+    },
+    stop(): Promise<void> {
+      return new Promise((resolve, reject) => {
+        server.closeAllConnections()
+        server.close((err) => (err ? reject(err) : resolve()))
+      })
+    },
+  }
+}
