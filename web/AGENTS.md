@@ -20,7 +20,7 @@
 | `src/services/` | 组合根 `createServices` 与 `HttpSessionTransport`；页面不直接实例化仓储。 |
 | `src/mocks/` | 仓储的本地实现、种子数据与 `MockSessionTransport`。 |
 | `src/api/` | 与 UI 无关的数据逻辑：类型、事件折叠（`turns.ts`）、SSE 解析（`sse.ts`）、归一化、错误与 ID。 |
-| `src/styles/` | 从静态原型迁移的样式；`legacy/` 是原始静态页面，仅作对照，不参与构建。 |
+| `src/styles/` | 从静态原型迁移的样式，入口为 `index.css`。 |
 | `test/` | Vitest 测试，运行于 jsdom。 |
 
 ## 服务组合与 mock 边界
