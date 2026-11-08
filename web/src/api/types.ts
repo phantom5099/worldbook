@@ -185,7 +185,6 @@ export type SessionEventType =
   | 'turn_ended'
   | 'user_message'
   | 'assistant_message'
-  | 'tool_call'
   | 'tool_result'
   | 'subagent_spawned'
   | 'subagent_result'

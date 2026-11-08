@@ -4,7 +4,7 @@
 
 ## 职责
 
-- 定义全部会话事件类型（9 种，见 `types.ts` 的 `SessionEventType`）。
+- 定义全部会话事件类型（8 种，见 `types.ts` 的 `SessionEventType`）。
 - `SessionService.append`：seq 串行分配 + 批量落库；`getHistory`：按 seq 升序读取。
 
 ## 不变量

@@ -138,8 +138,6 @@ export function createLoop(deps: LoopDeps) {
 
     if (calls.length === 0) return signal.aborted ? 'interrupted' : 'done'
 
-    await emitEvent('tool_call', { calls })
-
     const results = await deps.tools.executeBatch(calls, {
       sessionId,
       turnId,

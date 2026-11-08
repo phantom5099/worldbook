@@ -67,12 +67,11 @@ describe('foldTurns', () => {
     expect(turns[0]?.status).toBe('running')
   })
 
-  it('把工具调用叠加到当前步骤', () => {
+  it('assistant_message 的 toolCalls 进入当前步骤', () => {
     const turns = foldTurns([
       event(1, 'turn_started', { turnId: 't1' }),
-      event(2, 'assistant_message', { text: '我在查。' }),
-      event(3, 'tool_call', { calls: [{ name: 'search' }] }),
-      event(4, 'turn_ended', { reason: 'done', steps: 1 }),
+      event(2, 'assistant_message', { text: '我在查。', toolCalls: [{ name: 'search' }] }),
+      event(3, 'turn_ended', { reason: 'done', steps: 1 }),
     ])
     expect(turns[0]?.steps[0]?.toolCalls).toEqual([{ name: 'search' }])
   })

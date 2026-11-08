@@ -46,7 +46,6 @@ function createTurn(round: number, turnId?: string): TurnView {
 export function foldTurns(events: readonly SessionEvent[]): TurnView[] {
   const turns: TurnView[] = []
   let current: TurnView | undefined
-  let step: TurnStep | undefined
   let round = 0
 
   for (const event of events) {
@@ -56,7 +55,6 @@ export function foldTurns(events: readonly SessionEvent[]): TurnView[] {
       round += 1
       current = createTurn(round, typeof payload?.turnId === 'string' ? payload.turnId : undefined)
       turns.push(current)
-      step = undefined
       continue
     }
 
@@ -72,14 +70,7 @@ export function foldTurns(events: readonly SessionEvent[]): TurnView[] {
         turns.push(current)
       }
       const payload = isRecord(event.payload) ? (event.payload as unknown as AssistantMessagePayload) : { text: '' }
-      step = stepOf(payload)
-      current.steps.push(step)
-      continue
-    }
-
-    if (event.type === 'tool_call' && step && isRecord(event.payload)) {
-      const calls = event.payload.calls
-      if (Array.isArray(calls)) step.toolCalls = [...(step.toolCalls ?? []), ...calls]
+      current.steps.push(stepOf(payload))
       continue
     }
 
@@ -88,7 +79,6 @@ export function foldTurns(events: readonly SessionEvent[]): TurnView[] {
       current.status = statusOf(payload?.reason)
       current.reason = payload?.reason
       current = undefined
-      step = undefined
     }
   }
 
