@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import OpenAI from 'openai'
 import type {
   ChatCompletionFunctionTool,
@@ -131,7 +132,7 @@ export class OpenAICompatClient implements ModelClient {
         } catch {
           throw new Error(`model returned malformed tool arguments for ${acc.name}: ${acc.arguments}`)
         }
-        return { callId: acc.id, name: acc.name, args }
+        return { callId: acc.id || randomUUID(), name: acc.name, args }
       })
 
     yield { type: 'message', text, toolCalls, ...(usage ? { usage } : {}) }
