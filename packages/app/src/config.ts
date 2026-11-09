@@ -1,10 +1,9 @@
 import { PROVIDER_PRESETS } from '@worldbook/model'
 import type { ProviderPresetName } from '@worldbook/model'
-import type { HttpOptions } from '@worldbook/http'
 import type { AppConfig } from './app.js'
 
 /** 环境变量解析结果：readConfig 总会给出 HTTP 端口，因此 http 一定存在。 */
-type ProcessConfig = AppConfig & { http: HttpOptions }
+type ProcessConfig = AppConfig & { http: NonNullable<AppConfig['http']> }
 
 /**
  * 唯一的环境变量读取入口：本地由启动命令的 --env-file 加载文件，部署由平台注入；
@@ -15,9 +14,9 @@ export function readConfig(env: NodeJS.ProcessEnv): ProcessConfig {
     database: { url: readRequired(env, 'DATABASE_URL') },
     model: readModel(env),
     http: { port: readPositiveInt(env, 'HTTP_PORT', 3000) },
-    turnStateMaxEntries: readPositiveInt(env, 'TURN_STATE_MAX_ENTRIES', 100_000),
-    sessionCounterMaxEntries: readPositiveInt(env, 'SESSION_COUNTER_MAX_ENTRIES', 100_000),
-    sinkMaxBufferedFrames: readPositiveInt(env, 'SINK_MAX_BUFFERED_FRAMES', 1024),
+    turn: { maxEntries: readPositiveInt(env, 'TURN_STATE_MAX_ENTRIES', 100_000) },
+    session: { maxEntries: readPositiveInt(env, 'SESSION_COUNTER_MAX_ENTRIES', 100_000) },
+    sink: { maxBufferedFrames: readPositiveInt(env, 'SINK_MAX_BUFFERED_FRAMES', 1024) },
   }
 }
 
