@@ -91,7 +91,7 @@ http ← subagent（子代理状态端点）
 | 改 HTTP 路由 / SSE 端点 | `packages/http/src/http.ts` |
 | 改表结构 | `packages/db/migrations/`（新增版本文件）+ `packages/db/src/migrate.ts` 登记 `MIGRATIONS` |
 | 改装配 / 依赖注入 | `packages/app/src/app.ts` |
-| 改环境变量 / 进程内上限 / 进程入口 | `packages/app/src/main.ts`、`packages/app/src/config.ts` |
+| 改环境变量 / 进程内上限 / 进程入口 | `packages/app/src/config.ts`、`packages/app/src/main.ts` |
 | 新增工具给 agent 用 | 在 `packages/tool/src/tools/<域>/` 下按工具新建文件定义 `ToolDefinition`，在 `packages/tool/src/tools/index.ts` 的 `builtinTools` 插件里 `ctx.tools.register`（需要业务服务时在执行期从 ctx 解析） |
 | 新增跨包依赖 | 该包 `package.json` 加 `workspace:*`，并更新两侧 `agents.md` 的依赖方向 |
 

@@ -4,11 +4,16 @@ import { MockModelClient } from '@worldbook/model/testing'
 import { MemoryStore } from '@worldbook/session/testing'
 import { createApp, readConfig } from '../src/index.js'
 
+const TEST_ENV = {
+  DATABASE_URL: 'postgres://unused',
+  MODEL_PRESET: 'deepseek',
+  DEEPSEEK_API_KEY: 'unused',
+}
+
 function makeConfig(model: ModelClient) {
   return {
-    ...readConfig({}),
+    ...readConfig(TEST_ENV),
     database: { store: new MemoryStore() },
-    model: { baseUrl: 'unused', apiKey: 'unused', model: 'unused' },
     modelClient: model,
   }
 }
@@ -82,9 +87,8 @@ describe('cordis 装配', () => {
   it('先构造 url 版装配再构造 store 版，后者仍可启动', async () => {
     // 只构造不 start：url 版不建立连接，仅用于复现「装配插件被改写」的副作用
     createApp({
-      ...readConfig({}),
+      ...readConfig(TEST_ENV),
       database: { url: 'postgres://localhost/unused' },
-      model: { baseUrl: 'unused', apiKey: 'unused', model: 'unused' },
       modelClient: new MockModelClient(),
     })
 

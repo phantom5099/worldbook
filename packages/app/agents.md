@@ -1,6 +1,6 @@
 # app
 
-cordis 装配与进程入口。源码 `src/`：`app.ts`（装配）、`config.ts`（进程内上限的环境变量解析）、`main.ts`（进程入口）、`index.ts`（仅 re-export）；测试 `test/assembly.test.ts`。内存存储 MemoryStore 位于 session 包的 `testing` 子路径，由调用方注入。
+cordis 装配与进程入口。源码 `src/`：`app.ts`（装配）、`config.ts`（环境变量解析与校验）、`main.ts`（进程入口）、`index.ts`（仅 re-export）；测试 `test/assembly.test.ts`。内存存储 MemoryStore 位于 session 包的 `testing` 子路径，由调用方注入。
 
 ## 结构
 
@@ -13,9 +13,12 @@ cordis 装配与进程入口。源码 `src/`：`app.ts`（装配）、`config.ts
 
 ## 配置
 
-- 配置只来自环境变量：`main.ts` 直接读 `process.env`，应用代码不加载文件。本地开发用 `pnpm dev`（`tsx --env-file-if-exists=.env.development`），由启动命令加载仓库根的 `.env.development`（gitignore，自建）；部署由平台注入同名环境变量，`pnpm start` 不读任何文件。
-- 模型配置：`MODEL_PRESET`（deepseek/gpt/glm，见 model 包 `PROVIDER_PRESETS`）选中预置后只需对应 `apiKeyEnv` 声明的变量；或不用预置直接给 `MODEL_BASE_URL`/`MODEL_API_KEY`。`MODEL_NAME` 可覆盖预置默认模型，`HTTP_PORT` 缺省 3000，`DATABASE_URL` 必填。
-- 缓存上限：`config.ts` 的 `readConfig(env)` 解析 `TURN_STATE_MAX_ENTRIES`（turn 终态快照，默认 100000）、`SESSION_COUNTER_MAX_ENTRIES`（会话 seq 计数器，默认 100000）、`SINK_MAX_BUFFERED_FRAMES`（单订阅未消费帧，默认 1024）；非正整数抛错，启动失败。解析结果作为 `AppConfig` 的同名字段注入各服务构造参数。
+- `config.ts` 的 `readConfig(env)` 是唯一的环境变量读取入口：`main.ts` 只调用一次并把结果交给 `startApp`，其他模块不读 `process.env`。缺必填项、未知 `MODEL_PRESET` 或数值非法时抛错，进程启动失败，错误信息给出变量名与当前值。
+- 数据库：`DATABASE_URL` 必填。
+- 模型：`MODEL_PRESET`（deepseek/gpt/glm，见 model 包 `PROVIDER_PRESETS`）选中预置后只需对应 `apiKeyEnv` 声明的变量，baseUrl 与默认模型取自预置；不用预置时 `MODEL_BASE_URL`、`MODEL_API_KEY`、`MODEL_NAME` 三项必填。`MODEL_NAME` 可覆盖预置默认模型。
+- HTTP：`HTTP_PORT` 缺省 3000；解析结果必带 `http`，可直接读 `config.http.port`。
+- 缓存上限：`TURN_STATE_MAX_ENTRIES`（turn 终态快照，默认 100000）、`SESSION_COUNTER_MAX_ENTRIES`（会话 seq 计数器，默认 100000）、`SINK_MAX_BUFFERED_FRAMES`（单订阅未消费帧，默认 1024）。解析结果即 `AppConfig`，同名字段注入各服务构造参数。
+- 本地文件：`pnpm dev`、`pnpm migrate` 用 `tsx --env-file-if-exists` 依次加载仓库根 `.env`、`.env.local`（后者覆盖前者，均 gitignore），模板为被跟踪的 `.env.example`；切换本地配置改用 `pnpm exec tsx --env-file=.env.<名称> packages/app/src/main.ts`。部署由平台注入环境变量，`pnpm start` 不加载任何文件。
 
 ## 不变量与边界
 
