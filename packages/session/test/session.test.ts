@@ -144,6 +144,23 @@ describe('SessionService.append', () => {
     expect(store.maxSeqCalls).toBe(3)
   })
 
+  it('再次 append 刷新最近使用序，淘汰最久未用的会话', async () => {
+    const store = new FakeStore()
+    const a = await store.createSession({})
+    const b = await store.createSession({})
+    const c = await store.createSession({})
+    const service = new SessionService(store, { maxEntries: 2 })
+    await service.append(a, [{ type: 'user_message', payload: 'a' }])
+    await service.append(b, [{ type: 'user_message', payload: 'b' }])
+    await service.append(a, [{ type: 'user_message', payload: 'a2' }])
+    await service.append(c, [{ type: 'user_message', payload: 'c' }])
+
+    const callsBefore = store.maxSeqCalls
+    const events = await service.append(a, [{ type: 'user_message', payload: 'a3' }])
+    expect(events[0]!.seq).toBe(3)
+    expect(store.maxSeqCalls).toBe(callsBefore)
+  })
+
   it('落库中的会话计数器不被淘汰，后续 append 续接 seq', async () => {
     const store = new ControlledStore()
     const slow = await store.createSession({})

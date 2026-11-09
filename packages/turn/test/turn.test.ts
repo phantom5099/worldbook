@@ -92,6 +92,22 @@ describe('TurnRegistry', () => {
     expect(registry.getState('s3')).toBeDefined()
   })
 
+  it('settle 刷新最近使用序，从中间移到链尾后不被优先淘汰', async () => {
+    const registry = registryWith(undefined, 3)
+    await registry.claim('s1')
+    await registry.claim('s2')
+    registry.settle('s2', 'done')
+    await registry.claim('s3')
+    registry.settle('s3', 'done')
+    await registry.claim('s4')
+    registry.settle('s1', 'done')
+
+    expect(registry.getState('s1')).toBeDefined()
+    expect(registry.getState('s2')).toBeUndefined()
+    expect(registry.getState('s3')).toBeDefined()
+    expect(registry.getState('s4')).toBeDefined()
+  })
+
   it('running 快照不参与淘汰，即使终态已超上限', async () => {
     const registry = registryWith(undefined, 1)
     await registry.claim('r1')

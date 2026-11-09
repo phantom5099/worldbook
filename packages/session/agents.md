@@ -9,7 +9,7 @@
 
 ## 不变量
 
-- seq 单会话内严格递增、从 1 开始；计数器内存缓存为有界 LRU（容量 `SessionServiceOptions.maxEntries`，缺省时不淘汰；Map 插入序即最近使用序），首次 append 时从 `maxSeq` 初始化，初始化单飞（同一会话的并发 append 共用一次 `maxSeq` 读取，分配段无 await），避免冷会话并发写分配重复 seq。
+- seq 单会话内严格递增、从 1 开始；计数器内存缓存为有界 LRU（容量 `SessionServiceOptions.maxEntries`，缺省时不淘汰；Map 存节点，双向链表维护最近使用序，append 把节点移到链尾，初始化创建即位于链尾，淘汰从链头取并跳过仍有落库或初始化的会话，每移除一个节点 O(1)），首次 append 时从 `maxSeq` 初始化，初始化单飞（同一会话的并发 append 共用一次 `maxSeq` 读取，分配段无 await），避免冷会话并发写分配重复 seq。
 - 计数器淘汰与落库解耦：仍有 append 落库中的会话跳过淘汰；计数器在最后一个落库结束前不丢弃，避免新 append 从落后的 `maxSeq` 重新初始化。
 - 会话写入者不唯一：`subagent.send` 的 `subagent_message` 与子 loop 的 `subagent_result` 都写目标会话，不经过该会话的 turn claim。
 - 落库失败标记待重置，等同会话落库全部结束再丢弃内存计数器（下次从 DB 重新初始化），不允许内存与 DB 漂移后继续追加。

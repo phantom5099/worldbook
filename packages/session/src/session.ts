@@ -6,14 +6,23 @@ export interface SessionServiceOptions {
   maxEntries?: number
 }
 
+interface CounterNode {
+  sessionId: SessionId
+  value: number
+  prev: CounterNode | null
+  next: CounterNode | null
+}
+
 export class SessionService {
-  private readonly counters = new Map<SessionId, number>()
+  private readonly counters = new Map<SessionId, CounterNode>()
   /** 冷会话的计数器初始化：单飞，避免并发 append 各自读到同一个 maxSeq 而分配重复 seq。 */
   private readonly initializing = new Map<SessionId, Promise<void>>()
   /** 会话的落库中 append 数：计数器在最后一个落库结束前不能被淘汰或丢弃。 */
   private readonly inflight = new Map<SessionId, number>()
   /** 落库失败后待丢弃：等同会话所有落库结束再从 DB 重新初始化。 */
   private readonly resetPending = new Set<SessionId>()
+  private head: CounterNode | null = null
+  private tail: CounterNode | null = null
 
   constructor(
     private readonly store: SessionStore,
@@ -30,14 +39,15 @@ export class SessionService {
     let failed = true
     try {
       await this.ensureCounter(sessionId)
-      let last = this.counters.get(sessionId)!
+      const node = this.counters.get(sessionId)!
+      let last = node.value
       const createdAt = new Date()
       const assigned = events.map((event) => {
         last += 1
         return { seq: last, type: event.type, payload: event.payload, createdAt }
       })
-      this.counters.delete(sessionId)
-      this.counters.set(sessionId, last)
+      node.value = last
+      this.moveToTail(node)
       await this.store.insertEvents(sessionId, assigned)
       failed = false
       this.evict()
@@ -54,7 +64,7 @@ export class SessionService {
       pending = this.store
         .maxSeq(sessionId)
         .then((max) => {
-          this.counters.set(sessionId, max)
+          this.createCounter(sessionId, max)
         })
         .finally(() => {
           this.initializing.delete(sessionId)
@@ -62,6 +72,19 @@ export class SessionService {
       this.initializing.set(sessionId, pending)
     }
     await pending
+  }
+
+  private createCounter(sessionId: SessionId, value: number): void {
+    const node: CounterNode = {
+      sessionId,
+      value,
+      prev: this.tail,
+      next: null,
+    }
+    if (this.tail !== null) this.tail.next = node
+    else this.head = node
+    this.tail = node
+    this.counters.set(sessionId, node)
   }
 
   private endAppend(sessionId: SessionId, failed: boolean): void {
@@ -72,19 +95,48 @@ export class SessionService {
       return
     }
     this.inflight.delete(sessionId)
-    if (this.resetPending.delete(sessionId)) this.counters.delete(sessionId)
+    if (this.resetPending.delete(sessionId)) {
+      const node = this.counters.get(sessionId)
+      if (node !== undefined) this.removeCounter(node)
+    }
   }
 
-  /** Map 插入序即最近使用序；仍有落库或初始化的会话跳过，避免读到落后的 maxSeq。 */
+  /** 链表按最近使用排序；仍有落库或初始化的会话跳过，避免读到落后的 maxSeq。 */
   private evict(): void {
     const maxEntries = this.options.maxEntries
     if (maxEntries === undefined) return
-    if (this.counters.size <= maxEntries) return
-    for (const sessionId of this.counters.keys()) {
-      if (this.counters.size <= maxEntries) return
-      if (this.inflight.has(sessionId) || this.initializing.has(sessionId)) continue
-      this.counters.delete(sessionId)
+    let node = this.head
+    while (node !== null && this.counters.size > maxEntries) {
+      const next = node.next
+      if (this.inflight.has(node.sessionId) || this.initializing.has(node.sessionId)) {
+        node = next
+        continue
+      }
+      this.removeCounter(node)
+      node = next
     }
+  }
+
+  private removeCounter(node: CounterNode): void {
+    this.unlink(node)
+    this.counters.delete(node.sessionId)
+  }
+
+  private moveToTail(node: CounterNode): void {
+    if (this.tail === node) return
+    this.unlink(node)
+    node.prev = this.tail
+    this.tail!.next = node
+    this.tail = node
+  }
+
+  private unlink(node: CounterNode): void {
+    if (node.prev !== null) node.prev.next = node.next
+    else this.head = node.next
+    if (node.next !== null) node.next.prev = node.prev
+    else this.tail = node.prev
+    node.prev = null
+    node.next = null
   }
 
   getHistory(

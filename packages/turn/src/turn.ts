@@ -74,13 +74,21 @@ export function foldTurnState(
 }
 
 export interface TurnRegistryOptions {
-  /** 终态快照上限；缺省不淘汰。running 与正在 claim 的会话不计入淘汰。 */
+  /** 快照节点总数上限；缺省不淘汰。淘汰时跳过 running 快照。 */
   maxEntries?: number
 }
 
+interface TurnNode extends TurnSnapshot {
+  sessionId: SessionId
+  prev: TurnNode | null
+  next: TurnNode | null
+}
+
 export class TurnRegistry {
-  private states = new Map<SessionId, TurnSnapshot>()
-  private claiming = new Set<SessionId>()
+  private readonly nodes = new Map<SessionId, TurnNode>()
+  private readonly claiming = new Set<SessionId>()
+  private head: TurnNode | null = null
+  private tail: TurnNode | null = null
 
   constructor(
     private readonly ids: TurnIdSource,
@@ -88,16 +96,15 @@ export class TurnRegistry {
   ) {}
 
   async claim(sessionId: SessionId): Promise<TurnClaim> {
-    if (this.states.get(sessionId)?.phase === 'running' || this.claiming.has(sessionId)) {
+    if (this.nodes.get(sessionId)?.phase === 'running' || this.claiming.has(sessionId)) {
       throw new TurnAlreadyActiveError(`session ${sessionId} already has an active turn`)
     }
     this.claiming.add(sessionId)
     try {
-      const current = this.states.get(sessionId)
+      const current = this.nodes.get(sessionId)
       const lastTurnId = current !== undefined ? current.turnId : await this.ids.lastTurnId(sessionId)
       const turnId = lastTurnId + 1
-      this.states.delete(sessionId)
-      this.states.set(sessionId, { turnId, phase: 'running' })
+      this.setState(sessionId, { turnId, phase: 'running' })
       return { turnId }
     } finally {
       this.claiming.delete(sessionId)
@@ -105,26 +112,81 @@ export class TurnRegistry {
   }
 
   settle(sessionId: SessionId, reason: TurnEndReason): void {
-    const state = this.states.get(sessionId)
-    if (state?.phase !== 'running') return
-    this.states.delete(sessionId)
-    this.states.set(sessionId, { turnId: state.turnId, phase: phaseOf(reason), reason })
+    const node = this.nodes.get(sessionId)
+    if (node?.phase !== 'running') return
+    node.phase = phaseOf(reason)
+    node.reason = reason
+    this.moveToTail(node)
     this.evict()
   }
 
   getState(sessionId: SessionId): TurnSnapshot | undefined {
-    return this.states.get(sessionId)
+    const node = this.nodes.get(sessionId)
+    if (node === undefined) return undefined
+    return { turnId: node.turnId, phase: node.phase, reason: node.reason }
   }
 
-  /** Map 插入序即最近使用序；被淘汰的终态快照下次 claim 由 TurnIdSource 从日志恢复编号。 */
+  private setState(sessionId: SessionId, state: TurnSnapshot): void {
+    const existing = this.nodes.get(sessionId)
+    if (existing !== undefined) {
+      existing.turnId = state.turnId
+      existing.phase = state.phase
+      existing.reason = state.reason
+      this.moveToTail(existing)
+      return
+    }
+    const node: TurnNode = {
+      sessionId,
+      turnId: state.turnId,
+      phase: state.phase,
+      reason: state.reason,
+      prev: this.tail,
+      next: null,
+    }
+    if (this.tail !== null) this.tail.next = node
+    else this.head = node
+    this.tail = node
+    this.nodes.set(sessionId, node)
+  }
+
+  /**
+   * 链表按最近使用排序，链头即最旧；淘汰从链头取，跳过 running 快照。
+   * 被淘汰的终态快照下次 claim 由 TurnIdSource 从日志恢复编号。
+   */
   private evict(): void {
     const maxEntries = this.options.maxEntries
     if (maxEntries === undefined) return
-    if (this.states.size <= maxEntries) return
-    for (const [sessionId, state] of this.states) {
-      if (this.states.size <= maxEntries) return
-      if (state.phase === 'running' || this.claiming.has(sessionId)) continue
-      this.states.delete(sessionId)
+    let node = this.head
+    while (node !== null && this.nodes.size > maxEntries) {
+      const next = node.next
+      if (node.phase === 'running') {
+        node = next
+        continue
+      }
+      this.remove(node)
+      node = next
     }
+  }
+
+  private moveToTail(node: TurnNode): void {
+    if (this.tail === node) return
+    this.unlink(node)
+    node.prev = this.tail
+    this.tail!.next = node
+    this.tail = node
+  }
+
+  private remove(node: TurnNode): void {
+    this.unlink(node)
+    this.nodes.delete(node.sessionId)
+  }
+
+  private unlink(node: TurnNode): void {
+    if (node.prev !== null) node.prev.next = node.next
+    else this.head = node.next
+    if (node.next !== null) node.next.prev = node.prev
+    else this.tail = node.prev
+    node.prev = null
+    node.next = null
   }
 }
