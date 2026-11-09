@@ -6,7 +6,6 @@ import { shortDate } from '@/api/ids'
 import { messageOf } from '@/api/errors'
 import { useSessionsStore } from '@/stores/sessions'
 import { useUiStore } from '@/stores/ui'
-import AppAvatar from '@/components/AppAvatar.vue'
 import BookCover from '@/components/BookCover.vue'
 import SessionEditModal from '@/components/SessionEditModal.vue'
 
@@ -134,23 +133,5 @@ async function saveSession(patch: { title: string; snapshot: SessionSummary['sna
       @close="editTarget = null"
       @save="saveSession"
     />
-
-    <div v-if="focus" class="section-head compact" style="margin-top: 26px">
-      <h2>会话角色</h2>
-      <span>快照随会话保存</span>
-    </div>
-    <div v-if="focus?.snapshot.cast.length" class="card-grid">
-      <article v-for="card in focus.snapshot.cast" :key="card.id" class="character-card">
-        <div class="character-card-top">
-          <AppAvatar :name="card.name" :avatar="card.avatar" :avatar-class="card.avatarClass" />
-          <div class="character-card-name">
-            <strong>{{ card.name }}</strong>
-            <small>{{ card.role || '身份未定' }}</small>
-          </div>
-          <span class="status-pill">{{ card.badge || '在场' }}</span>
-        </div>
-        <p class="character-card-goal"><span>公开目标 · </span>{{ card.goal || '未填写' }}</p>
-      </article>
-    </div>
   </section>
 </template>

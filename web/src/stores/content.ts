@@ -2,8 +2,8 @@ import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import type { Card, CreateCardInput, CreateWorldInput, WorldDetail, WorldSummary } from '@/api/types'
 import { messageOf } from '@/api/errors'
-import type { CardPatch } from '@/repositories/types'
-import { services } from '@/services/services'
+import type { CardPatch } from '@/api/endpoints/types'
+import { api } from '@/api/endpoints'
 
 export const useContentStore = defineStore('content', () => {
   const worlds = ref<WorldSummary[]>([])
@@ -15,7 +15,7 @@ export const useContentStore = defineStore('content', () => {
     loading.value = true
     error.value = ''
     try {
-      worlds.value = await services.worlds.list()
+      worlds.value = await api.worlds.list()
     } catch (reason) {
       error.value = messageOf(reason)
       throw reason
@@ -25,23 +25,23 @@ export const useContentStore = defineStore('content', () => {
   }
 
   async function getWorld(id: string): Promise<WorldDetail | undefined> {
-    return services.worlds.get(id)
+    return api.worlds.get(id)
   }
 
   async function createWorld(input: CreateWorldInput): Promise<WorldDetail> {
-    const world = await services.worlds.create(input)
+    const world = await api.worlds.create(input)
     await loadWorlds()
     return world
   }
 
   async function updateWorld(id: string, patch: Partial<CreateWorldInput>): Promise<WorldDetail> {
-    const world = await services.worlds.update(id, patch)
+    const world = await api.worlds.update(id, patch)
     await loadWorlds()
     return world
   }
 
   async function removeWorld(id: string): Promise<void> {
-    await services.worlds.remove(id)
+    await api.worlds.remove(id)
     await loadWorlds()
   }
 
@@ -49,7 +49,7 @@ export const useContentStore = defineStore('content', () => {
     loading.value = true
     error.value = ''
     try {
-      cards.value = await services.cards.list(filter)
+      cards.value = await api.cards.list(filter)
     } catch (reason) {
       error.value = messageOf(reason)
       throw reason
@@ -59,19 +59,19 @@ export const useContentStore = defineStore('content', () => {
   }
 
   async function createCard(input: CreateCardInput): Promise<Card> {
-    const card = await services.cards.create(input)
+    const card = await api.cards.create(input)
     await loadCards()
     return card
   }
 
   async function updateCard(id: string, patch: CardPatch): Promise<Card> {
-    const card = await services.cards.update(id, patch)
+    const card = await api.cards.update(id, patch)
     await loadCards()
     return card
   }
 
   async function removeCard(id: string): Promise<void> {
-    await services.cards.remove(id)
+    await api.cards.remove(id)
     await loadCards()
   }
 

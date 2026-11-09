@@ -2,6 +2,7 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import type {
   ChangeRecord,
+  CreateSessionInput,
   SessionCast,
   SessionEvent,
   SessionSummary,
@@ -10,7 +11,7 @@ import type {
 } from '@/api/types'
 import { messageOf } from '@/api/errors'
 import { foldTurns, mergeEvents, notesOfTurn, applyNotes } from '@/api/turns'
-import { services } from '@/services/services'
+import { api } from '@/api/endpoints'
 import { useUiStore } from './ui'
 
 const NUM_CN = ['', '第一', '第二', '第三', '第四', '第五', '第六', '第七', '第八', '第九', '第十', '第十一', '第十二']
@@ -82,7 +83,7 @@ export const useSessionsStore = defineStore('sessions', () => {
     loading.value = true
     error.value = ''
     try {
-      sessions.value = await services.sessions.list()
+      sessions.value = await api.sessions.list()
       const exists = sessions.value.some((item) => item.id === activeId.value)
       if (!exists) {
         const firstActive = sessions.value.find((item) => item.status === 'active')
@@ -119,7 +120,7 @@ export const useSessionsStore = defineStore('sessions', () => {
     }
     error.value = ''
     try {
-      const list = await services.transport.history(session.serverId)
+      const list = await api.turns.history(session.serverId)
       activeServerId = session.serverId
       events.value = list
       turns.value = foldTurns(list)
@@ -153,7 +154,7 @@ export const useSessionsStore = defineStore('sessions', () => {
 
   async function consume(serverId: string, signal: AbortSignal): Promise<void> {
     try {
-      for await (const frame of services.transport.stream(serverId, signal)) {
+      for await (const frame of api.turns.stream(serverId, signal)) {
         if (signal.aborted) break
         await handleFrame(frame)
       }
@@ -196,7 +197,7 @@ export const useSessionsStore = defineStore('sessions', () => {
   async function refreshHistory(): Promise<void> {
     const session = current()
     if (!session?.serverId) return
-    const list = await services.transport.history(session.serverId)
+    const list = await api.turns.history(session.serverId)
     events.value = list
     turns.value = foldTurns(list)
   }
@@ -214,7 +215,7 @@ export const useSessionsStore = defineStore('sessions', () => {
     const nextCount = Math.min(ROUND_LIMIT, Math.max(session.turnCount, done))
     const isComplete = nextCount >= ROUND_LIMIT
     if (nextCount === session.turnCount && isComplete === session.completed) return
-    const updated = await services.sessions.markProgress(session.id, {
+    const updated = await api.sessions.markProgress(session.id, {
       turnCount: nextCount,
       changes: replay().changes,
       completed: isComplete || session.completed,
@@ -252,7 +253,7 @@ export const useSessionsStore = defineStore('sessions', () => {
     streaming.value = true
     connectStream()
     try {
-      await services.transport.startTurn(session.serverId, text)
+      await api.turns.startTurn(session.serverId, text)
     } catch (reason) {
       streaming.value = false
       error.value = messageOf(reason)
@@ -261,15 +262,15 @@ export const useSessionsStore = defineStore('sessions', () => {
     }
   }
 
-  async function create(input: Parameters<typeof services.sessions.create>[0]): Promise<SessionSummary> {
-    const session = await services.sessions.create(input)
+  async function create(input: CreateSessionInput): Promise<SessionSummary> {
+    const session = await api.sessions.create(input)
     replaceSession(session)
     activeId.value = session.id
     return session
   }
 
   async function activate(id: string): Promise<SessionSummary> {
-    const session = await services.sessions.activate(id)
+    const session = await api.sessions.activate(id)
     replaceSession(session)
     activeId.value = id
     return session
@@ -277,15 +278,15 @@ export const useSessionsStore = defineStore('sessions', () => {
 
   async function update(
     id: string,
-    patch: Parameters<typeof services.sessions.update>[1],
+    patch: Partial<Pick<SessionSummary, 'title' | 'snapshot'>>,
   ): Promise<SessionSummary> {
-    const session = await services.sessions.update(id, patch)
+    const session = await api.sessions.update(id, patch)
     replaceSession(session)
     return session
   }
 
   async function remove(id: string): Promise<void> {
-    await services.sessions.remove(id)
+    await api.sessions.remove(id)
     sessions.value = sessions.value.filter((item) => item.id !== id)
     if (activeId.value === id) {
       resetStory()
@@ -296,7 +297,7 @@ export const useSessionsStore = defineStore('sessions', () => {
   async function nextUnit(): Promise<SessionSummary> {
     const session = current()
     if (!session || !session.completed) throw new Error('本单元还没有完成')
-    const next = await services.sessions.startUnit(session.id)
+    const next = await api.sessions.startUnit(session.id)
     replaceSession(next)
     resetStory()
     await loadHistory(next.id)

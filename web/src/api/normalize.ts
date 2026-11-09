@@ -47,20 +47,6 @@ export function buildTraitGroups(text: string): TraitGroup[] {
   ]
 }
 
-export function traitsTextOf(card: Pick<Card, 'traitsText'> & { initial?: { traits?: TraitGroup[] } }): string {
-  if (card.traitsText) return card.traitsText
-  const groups = card.initial?.traits
-  if (!groups) return ''
-  const names: string[] = []
-  for (const group of groups) {
-    for (const item of group.items) {
-      const name = item[0]
-      if (name && !['待观察', '平静'].includes(name) && !names.includes(name)) names.push(name)
-    }
-  }
-  return names.slice(0, 5).join('、')
-}
-
 export function avatarClassOf(name: string): string {
   return AV_CLASSES[hashString(name) % AV_CLASSES.length]!
 }

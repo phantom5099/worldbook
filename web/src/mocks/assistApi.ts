@@ -1,5 +1,5 @@
 import type { CreateCardInput, CreateWorldInput } from '@/api/types'
-import type { AssistMessage, AssistRepository } from '@/repositories/types'
+import type { AssistApi, AssistMessage } from '@/api/endpoints/types'
 
 const AI_BANS = '不出现真实宗教与真实人物；不写未成年人恋爱；不提供现实可执行的危险细节。'
 const AI_TRAITS = [
@@ -185,8 +185,8 @@ export interface MockAssistOptions {
   delayMs?: number
 }
 
-/** 本地起草器：只整理可编辑的草稿，不产生叙事内容。 */
-export class MockAssistRepository implements AssistRepository {
+/** 本地起草端点：只整理可编辑的草稿，不产生叙事内容。 */
+export class MockAssistApi implements AssistApi {
   private readonly delayMs: number
 
   constructor(options: MockAssistOptions = {}) {

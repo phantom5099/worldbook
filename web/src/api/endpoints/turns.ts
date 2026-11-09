@@ -1,7 +1,7 @@
 import { ApiError } from '@/api/errors'
 import { readSseStream } from '@/api/sse'
 import type { SessionEvent, SinkFrame } from '@/api/types'
-import type { SessionTransport } from '@/repositories/types'
+import type { TurnApi } from './types'
 
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 
@@ -15,7 +15,8 @@ async function bodyMessage(response: Response): Promise<string> {
   return `请求失败（${response.status}）`
 }
 
-export class HttpSessionTransport implements SessionTransport {
+/** 回合运行时后端：创建服务端会话、发起回合、读取历史与订阅事件流。 */
+export class HttpTurnApi implements TurnApi {
   private readonly baseUrl: string
 
   constructor(

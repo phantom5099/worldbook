@@ -2,7 +2,7 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import type { Account } from '@/api/types'
 import { messageOf } from '@/api/errors'
-import { services } from '@/services/services'
+import { api } from '@/api/endpoints'
 
 export const useAuthStore = defineStore('auth', () => {
   const account = ref<Account | null>(null)
@@ -16,8 +16,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function init(): Promise<void> {
     if (ready.value) return
-    await services.auth.ensureSeed()
-    account.value = services.auth.current()
+    account.value = await api.auth.restore()
     ready.value = true
   }
 
@@ -25,7 +24,7 @@ export const useAuthStore = defineStore('auth', () => {
     busy.value = true
     error.value = ''
     try {
-      account.value = await services.auth.login(handle, password)
+      account.value = await api.auth.login(handle, password)
     } catch (reason) {
       error.value = messageOf(reason)
       throw reason
@@ -38,7 +37,7 @@ export const useAuthStore = defineStore('auth', () => {
     busy.value = true
     error.value = ''
     try {
-      account.value = await services.auth.register(input)
+      account.value = await api.auth.register(input)
     } catch (reason) {
       error.value = messageOf(reason)
       throw reason
@@ -47,8 +46,8 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  function logout(): void {
-    services.auth.logout()
+  async function logout(): Promise<void> {
+    await api.auth.logout()
     account.value = null
     error.value = ''
   }

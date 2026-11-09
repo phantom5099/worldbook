@@ -29,7 +29,7 @@ function go(to: string): void {
 }
 
 function logout(): void {
-  auth.logout()
+  void auth.logout()
   ui.closeDrawers()
   void router.push('/sessions')
 }

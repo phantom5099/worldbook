@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { MemoryStorage, MockStore } from '@/mocks/store'
-import { MockCardRepository, MockContentStore, MockWorldRepository } from '@/mocks/contentRepository'
+import { MockCardApi, MockContentStore, MockWorldApi } from '@/mocks/contentApi'
 
 const NOW = '2026-11-07T08:00:00.000Z'
 
@@ -8,8 +8,8 @@ function setup() {
   const store = new MockStore(new MemoryStorage())
   let scope = 'user-a'
   const content = new MockContentStore(store, () => NOW, () => scope)
-  const worlds = new MockWorldRepository(content, () => 2)
-  const cards = new MockCardRepository(content)
+  const worlds = new MockWorldApi(content, () => 2)
+  const cards = new MockCardApi(content)
   return {
     store,
     content,
@@ -21,7 +21,7 @@ function setup() {
   }
 }
 
-describe('world repository', () => {
+describe('world endpoints', () => {
   it('按种子生成世界书与角色卡', async () => {
     const { worlds } = setup()
     const list = await worlds.list()
@@ -65,7 +65,7 @@ describe('world repository', () => {
   })
 })
 
-describe('card repository', () => {
+describe('card endpoints', () => {
   let ctx: ReturnType<typeof setup>
 
   beforeEach(() => {

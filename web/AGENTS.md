@@ -16,18 +16,18 @@
 | `src/views/` | 路由页面：会话列表、新建会话、故事、世界书、世界详情、角色卡、角色、复盘、提供商；登录页不挂路由，由 `App.vue` 在未登录时渲染。 |
 | `src/components/` | 可复用组件；`card/`、`common/`、`session/`、`shell/`、`story/`、`world/` 按用途分组。 |
 | `src/stores/` | Pinia setup store：`auth`、`content`（世界书与角色卡）、`sessions`、`providers`、`ui`。 |
-| `src/repositories/types.ts` | 页面与状态层依赖的仓储接口；新增数据源先在这里定义契约。 |
-| `src/services/` | 组合根 `createServices` 与 `HttpSessionTransport`；页面不直接实例化仓储。 |
-| `src/mocks/` | 仓储的本地实现、种子数据与 `MockSessionTransport`。 |
+| `src/api/endpoints/types.ts` | 页面与状态层调用的后端端点契约；新增端点先在这里定义。 |
+| `src/api/endpoints/` | 端点实现与组合根：`turns.ts` 是回合运行时的 HTTP 客户端，`index.ts` 的 `createApi` 装配并导出单例 `api`。 |
+| `src/mocks/` | 尚无后端端点的 mock 实现、种子数据与 `MockTurnApi`。 |
 | `src/api/` | 与 UI 无关的数据逻辑：类型、事件折叠（`turns.ts`）、SSE 解析（`sse.ts`）、归一化、错误与 ID。 |
 | `src/styles/` | 从静态原型迁移的样式，入口为 `index.css`。 |
 | `test/` | Vitest 测试，运行于 jsdom。 |
 
-## 服务组合与 mock 边界
+## 端点调用与 mock 边界
 
-- 页面和 store 只通过 `services` 暴露的仓储接口读写数据，不直接访问 `localStorage`。
-- 固定使用本地实现：账号、世界书、角色卡、提供商、起草器。它们目前没有后端接口。
-- 会话索引保存在浏览器；回合、历史与流经 `SessionTransport`。默认是 `HttpSessionTransport`，请求基地址取 `VITE_API_BASE`（默认为空，走同源）；设置 `VITE_SESSION_MODE=mock` 时切换到 `MockSessionTransport`。
+- 页面和 store 只通过 `api` 调用后端端点，不直接访问 `localStorage`。
+- 回合运行时已有后端契约：`createApi` 默认装配 `HttpTurnApi`，请求基地址取 `VITE_API_BASE`（默认为空，走同源）；设置 `VITE_SESSION_MODE=mock` 时换成 `MockTurnApi`。
+- 账号、世界书、角色卡、会话列表、提供商与起草器还没有后端端点，由 `src/mocks/` 的 mock 提供同签名实现。后端就绪后新增对应 HTTP 客户端并在 `createApi` 里切换，不提前编造端点。
 - HTTP 契约：`POST /sessions`（`{ meta }` 返回 `{ sessionId }`）、`POST /turns`（`{ sessionId, input }`）、`GET /sessions/:id/history?afterSeq=`、`GET /sessions/:id/stream`。流帧为 `{ kind: 'transition' }`、`{ kind: 'event' }`、`{ kind: 'delta' }`。
 - 提供商用量统计没有后端数据，界面显示 `—`；起草器由本地关键词规则生成可编辑草稿，不产生叙事内容。
 
@@ -35,7 +35,7 @@
 
 - `MockStore` 统一加前缀 `wb-mock:v1`；内容键为 `content:<ownerId>`，会话索引为 `sessions:<ownerId | anonymous>`，自定义提供商为 `providers:custom:<ownerId>`，账号列表全局共享。
 - 每个账号首次访问内容时写入各自的种子世界书与角色卡；删除世界书会级联删除其下角色卡，世界默认主角卡不允许删除。
-- 会话先以草稿存在本地，不创建服务端会话；`activate` 时才调用 `SessionTransport.create`。`startUnit` 递增单元序号、清空轮次与完成标记，并为新单元创建新的服务端会话。
+- 会话先以草稿存在本地，不创建服务端会话；`activate` 时才调用 `TurnApi.create`。`startUnit` 递增单元序号、清空轮次与完成标记，并为新单元创建新的服务端会话。
 
 ## 会话模型与流处理
 
@@ -49,7 +49,7 @@
 ## 编写约定
 
 - 保持 TypeScript strict、`noUncheckedIndexedAccess` 与 `verbatimModuleSyntax`；类型导入使用 `import type`。
-- 新增数据源时先扩展 `repositories/types.ts`，再在 `mocks/` 或 `services/` 提供实现，最后通过 `createServices` 装配；不在页面里写条件分支选择实现。
+- 新增端点时先在 `api/endpoints/types.ts` 定义契约，再在 `mocks/` 提供 mock（有后端时在 `api/endpoints/` 写 HTTP 实现），最后通过 `createApi` 装配；不在页面里写条件分支选择实现。
 - 测试替身统一放在 `src/mocks/` 或测试文件的 `vi.mock` 工厂中，不从生产入口导出仅供测试的接口。
 - 测试使用 `MemoryStorage` + `MockStore` 隔离本地数据；涉及组件时挂载真实 router 与 Pinia。
 - 页面迁移保持原型已有的 CSS 类名与结构，避免样式分叉。

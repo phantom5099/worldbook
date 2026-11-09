@@ -8,8 +8,8 @@ import type {
 import { ApiError } from '@/api/errors'
 import { newId } from '@/api/ids'
 import { toCast, toProtagonist } from '@/api/normalize'
-import type { SessionProgress, SessionRepository, SessionTransport } from '@/repositories/types'
-import type { MockContentStore } from './contentRepository'
+import type { SessionApi, SessionProgress, TurnApi } from '@/api/endpoints/types'
+import type { MockContentStore } from './contentApi'
 import { MockStore, clone } from './store'
 
 interface SessionMeta {
@@ -61,22 +61,22 @@ function metaOf(session: SessionSummary): SessionMeta {
   }
 }
 
-export interface MockSessionRepositoryOptions {
+export interface MockSessionApiOptions {
   ownerId: () => string | null
   now?: () => string
 }
 
 /**
- * 会话索引只存在于浏览器；真正的回合、历史与流仍走 `SessionTransport`。
- * 草稿不发请求，激活时才创建服务端会话。
+ * 会话列表的 mock 端点：草稿只留在本地，激活时才通过回合端点创建服务端会话。
+ * 回合、历史与事件流由 `TurnApi` 负责。
  */
-export class MockSessionRepository implements SessionRepository {
+export class MockSessionApi implements SessionApi {
   private readonly now: () => string
 
   constructor(
     private readonly content: MockContentStore,
-    private readonly transport: SessionTransport,
-    private readonly options: MockSessionRepositoryOptions,
+    private readonly turns: TurnApi,
+    private readonly options: MockSessionApiOptions,
     private readonly store = new MockStore(),
   ) {
     this.now = options.now ?? (() => new Date().toISOString())
@@ -143,10 +143,6 @@ export class MockSessionRepository implements SessionRepository {
     return this.read().find((item) => item.id === id)
   }
 
-  async getByServerId(serverId: string): Promise<SessionSummary | undefined> {
-    return this.read().find((item) => item.serverId === serverId)
-  }
-
   countByWorld(worldId: string): number {
     return this.read().filter((item) => item.snapshot.world.id === worldId).length
   }
@@ -169,7 +165,7 @@ export class MockSessionRepository implements SessionRepository {
     }
 
     if (input.status === 'active') {
-      const { sessionId } = await this.transport.create(metaOf(session))
+      const { sessionId } = await this.turns.create(metaOf(session))
       session.serverId = sessionId
     }
 
@@ -202,7 +198,7 @@ export class MockSessionRepository implements SessionRepository {
     const session = sessions.find((item) => item.id === id)
     if (!session) throw new ApiError(404, `会话 ${id} 不存在`)
     if (!session.serverId) {
-      const { sessionId } = await this.transport.create(metaOf(session))
+      const { sessionId } = await this.turns.create(metaOf(session))
       session.serverId = sessionId
     }
     session.status = 'active'
@@ -219,7 +215,7 @@ export class MockSessionRepository implements SessionRepository {
     session.turnCount = 0
     session.completed = false
     session.changes = []
-    const { sessionId } = await this.transport.create(metaOf(session))
+    const { sessionId } = await this.turns.create(metaOf(session))
     session.serverId = sessionId
     session.updatedAt = this.now()
     this.write(sessions)

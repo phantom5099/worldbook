@@ -3,19 +3,19 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 
-vi.mock('@/services/services', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/services/services')>()
+vi.mock('@/api/endpoints', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/endpoints')>()
   const { MemoryStorage, MockStore } = await import('@/mocks/store')
-  const { MockSessionTransport } = await import('@/mocks/transport')
+  const { MockTurnApi } = await import('@/mocks/turnApi')
   const store = new MockStore(new MemoryStorage())
-  const transport = new MockSessionTransport(store, { delayMs: 1 })
-  return { ...actual, services: actual.createServices({ store, transport }) }
+  const turns = new MockTurnApi(store, { delayMs: 1 })
+  return { ...actual, api: actual.createApi({ store, turns }) }
 })
 
 import StoryView from '@/views/StoryView.vue'
 import { useSessionsStore } from '@/stores/sessions'
-import { services } from '@/services/services'
-import type { MockSessionTransport } from '@/mocks/transport'
+import { api } from '@/api/endpoints'
+import type { MockTurnApi } from '@/mocks/turnApi'
 
 const pinia = createPinia()
 setActivePinia(pinia)
@@ -36,8 +36,8 @@ let serverId = ''
 let openingText = ''
 
 beforeAll(async () => {
-  const [draft] = await services.sessions.list()
-  const active = await services.sessions.activate(draft!.id)
+  const [draft] = await api.sessions.list()
+  const active = await api.sessions.activate(draft!.id)
   sessionId = active.id
   serverId = active.serverId!
   openingText = active.snapshot.opening.parts[0]?.text ?? ''
@@ -63,8 +63,8 @@ describe('StoryView', () => {
   })
 
   it('回到会话时用历史回填进度', async () => {
-    await services.transport.startTurn(serverId, '离线期间完成的行动')
-    await (services.transport as MockSessionTransport).whenIdle(serverId)
+    await api.turns.startTurn(serverId, '离线期间完成的行动')
+    await (api.turns as MockTurnApi).whenIdle(serverId)
 
     const sessions = useSessionsStore()
     expect(sessions.turnCount).toBe(0)

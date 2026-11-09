@@ -8,7 +8,7 @@ import type {
   SinkFrame,
   StateNote,
 } from '@/api/types'
-import type { SessionTransport } from '@/repositories/types'
+import type { TurnApi } from '@/api/endpoints/types'
 import { WORLD_SEEDS } from './fixtures/worlds'
 import { MockStore, clone } from './store'
 
@@ -62,17 +62,17 @@ function genericScript(input: string, meta: Record<string, unknown>): MockScript
   }
 }
 
-export interface MockTransportOptions {
+export interface MockTurnApiOptions {
   delayMs?: number
 }
 
-export class MockSessionTransport implements SessionTransport {
+export class MockTurnApi implements TurnApi {
   private readonly delayMs: number
   private readonly listeners = new Map<string, Set<FrameQueue>>()
   private readonly active = new Set<string>()
   private readonly generation = new Map<string, Promise<void>>()
 
-  constructor(private readonly store = new MockStore(), options: MockTransportOptions = {}) {
+  constructor(private readonly store = new MockStore(), options: MockTurnApiOptions = {}) {
     this.delayMs = options.delayMs ?? 18
   }
 

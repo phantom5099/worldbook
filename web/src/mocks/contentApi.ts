@@ -3,18 +3,16 @@ import type {
   CreateCardInput,
   CreateWorldInput,
   IntentSuggestion,
-  SessionCast,
-  SessionProtagonist,
   WorldDetail,
   WorldSummary,
 } from '@/api/types'
 import { ApiError } from '@/api/errors'
-import { avatarClassOf, buildTraitGroups, toCast, toProtagonist } from '@/api/normalize'
+import { avatarClassOf } from '@/api/normalize'
 import { newId } from '@/api/ids'
 import { GENERIC_CARD_SEEDS } from './fixtures/genericCards'
 import { WORLD_SEEDS } from './fixtures/worlds'
 import type { SeedCard, SeedWorld } from './fixtures/seedTypes'
-import type { CardPatch, CardRepository, WorldRepository } from '@/repositories/types'
+import type { CardPatch, CardApi, WorldApi } from '@/api/endpoints/types'
 import { MockStore, clone } from './store'
 
 interface ContentState {
@@ -347,19 +345,9 @@ export class MockContentStore {
     state.cards.splice(index, 1)
     this.write(state)
   }
-
-  protagonist(cardId: string): SessionProtagonist | undefined {
-    const card = this.getCard(cardId)
-    return card ? toProtagonist(card) : undefined
-  }
-
-  cast(cardId: string): SessionCast | undefined {
-    const card = this.getCard(cardId)
-    return card ? toCast(card) : undefined
-  }
 }
 
-export class MockWorldRepository implements WorldRepository {
+export class MockWorldApi implements WorldApi {
   constructor(private readonly content: MockContentStore, private readonly sessionCount: (worldId: string) => number = () => 0) {}
 
   async list(): Promise<WorldSummary[]> {
@@ -405,7 +393,7 @@ export class MockWorldRepository implements WorldRepository {
   }
 }
 
-export class MockCardRepository implements CardRepository {
+export class MockCardApi implements CardApi {
   constructor(private readonly content: MockContentStore) {}
 
   async list(filter?: { worldId?: string | null }): Promise<Card[]> {
@@ -427,8 +415,4 @@ export class MockCardRepository implements CardRepository {
   async remove(id: string): Promise<void> {
     this.content.removeCard(id)
   }
-}
-
-export function traitsFromText(text: string) {
-  return buildTraitGroups(text)
 }

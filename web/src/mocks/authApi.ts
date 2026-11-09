@@ -1,7 +1,7 @@
 import type { Account } from '@/api/types'
 import { ApiError } from '@/api/errors'
 import { newId } from '@/api/ids'
-import type { AuthRepository } from '@/repositories/types'
+import type { AuthApi } from '@/api/endpoints/types'
 import { MockStore } from './store'
 
 const ACCOUNTS_KEY = 'auth:accounts'
@@ -29,14 +29,14 @@ export async function hashPassword(password: string, salt: string): Promise<stri
   return hash.toString(16).padStart(8, '0')
 }
 
-export class MockAuthRepository implements AuthRepository {
+export class MockAuthApi implements AuthApi {
   constructor(private readonly store: MockStore) {}
 
   private accounts(): Account[] {
     return this.store.read<Account[]>(ACCOUNTS_KEY, [])
   }
 
-  async ensureSeed(): Promise<void> {
+  private async ensureSeed(): Promise<void> {
     if (this.accounts().length > 0) return
     const salt = randomHex(16)
     const account: Account = {
@@ -48,6 +48,11 @@ export class MockAuthRepository implements AuthRepository {
       createdAt: new Date().toISOString(),
     }
     this.store.write(ACCOUNTS_KEY, [account])
+  }
+
+  async restore(): Promise<Account | null> {
+    await this.ensureSeed()
+    return this.current()
   }
 
   current(): Account | null {
@@ -90,7 +95,7 @@ export class MockAuthRepository implements AuthRepository {
     return account
   }
 
-  logout(): void {
+  async logout(): Promise<void> {
     this.store.remove(CURRENT_KEY)
   }
 }

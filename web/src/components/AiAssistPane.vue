@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import type { CreateCardInput, CreateWorldInput } from '@/api/types'
 import { messageOf } from '@/api/errors'
-import { services } from '@/services/services'
+import { api } from '@/api/endpoints'
 
 type AssistKind = 'world' | 'card'
 type Draft = Record<string, string | undefined>
@@ -67,8 +67,8 @@ async function send(): Promise<void> {
     const messagesForApi = history.value.map((item) => ({ role: 'user' as const, text: item }))
     const next =
       props.kind === 'world'
-        ? await services.assist.worldDraft(messagesForApi, props.previous as Partial<CreateWorldInput> | undefined)
-        : await services.assist.cardDraft(messagesForApi, props.previous as Partial<CreateCardInput> | undefined)
+        ? await api.assist.worldDraft(messagesForApi, props.previous as Partial<CreateWorldInput> | undefined)
+        : await api.assist.cardDraft(messagesForApi, props.previous as Partial<CreateCardInput> | undefined)
     draft.value = next as unknown as Draft
     messages.value.push({
       role: 'assistant',

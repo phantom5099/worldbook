@@ -1,12 +1,12 @@
 import type { Provider } from '@/api/types'
 import { ApiError } from '@/api/errors'
-import type { ProviderRepository } from '@/repositories/types'
+import type { ProviderApi } from '@/api/endpoints/types'
 import { BUILTIN_PROVIDERS } from './fixtures/providers'
 import { MockStore } from './store'
 
 const CUSTOM_KEY = 'providers:custom'
 
-export class MockProviderRepository implements ProviderRepository {
+export class MockProviderApi implements ProviderApi {
   constructor(
     private readonly store: MockStore,
     private readonly scope: () => string = () => 'anonymous',
