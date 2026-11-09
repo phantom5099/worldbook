@@ -73,11 +73,19 @@ export function foldTurnState(
   return { phase: phaseOf(lastReason), reason: lastReason }
 }
 
+export interface TurnRegistryOptions {
+  /** 终态快照上限；缺省不淘汰。running 与正在 claim 的会话不计入淘汰。 */
+  maxEntries?: number
+}
+
 export class TurnRegistry {
   private states = new Map<SessionId, TurnSnapshot>()
   private claiming = new Set<SessionId>()
 
-  constructor(private readonly ids: TurnIdSource) {}
+  constructor(
+    private readonly ids: TurnIdSource,
+    private readonly options: TurnRegistryOptions = {},
+  ) {}
 
   async claim(sessionId: SessionId): Promise<TurnClaim> {
     if (this.states.get(sessionId)?.phase === 'running' || this.claiming.has(sessionId)) {
@@ -88,6 +96,7 @@ export class TurnRegistry {
       const current = this.states.get(sessionId)
       const lastTurnId = current !== undefined ? current.turnId : await this.ids.lastTurnId(sessionId)
       const turnId = lastTurnId + 1
+      this.states.delete(sessionId)
       this.states.set(sessionId, { turnId, phase: 'running' })
       return { turnId }
     } finally {
@@ -98,10 +107,24 @@ export class TurnRegistry {
   settle(sessionId: SessionId, reason: TurnEndReason): void {
     const state = this.states.get(sessionId)
     if (state?.phase !== 'running') return
+    this.states.delete(sessionId)
     this.states.set(sessionId, { turnId: state.turnId, phase: phaseOf(reason), reason })
+    this.evict()
   }
 
   getState(sessionId: SessionId): TurnSnapshot | undefined {
     return this.states.get(sessionId)
+  }
+
+  /** Map 插入序即最近使用序；被淘汰的终态快照下次 claim 由 TurnIdSource 从日志恢复编号。 */
+  private evict(): void {
+    const maxEntries = this.options.maxEntries
+    if (maxEntries === undefined) return
+    if (this.states.size <= maxEntries) return
+    for (const [sessionId, state] of this.states) {
+      if (this.states.size <= maxEntries) return
+      if (state.phase === 'running' || this.claiming.has(sessionId)) continue
+      this.states.delete(sessionId)
+    }
   }
 }

@@ -13,7 +13,8 @@ import type { SinkFrame } from '@worldbook/sink'
 
 const store = new MemoryStore()
 const session = new SessionService(store)
-const sink = new EventSink()
+// 积压用例依赖较小的缓冲上限；其余用例边生产边消费，帧数远低于该值
+const sink = new EventSink({ maxBufferedFrames: 16 })
 const turns = new TurnRegistry(sessionTurnIds(session))
 const tools = createTestToolService()
 const model = new MockModelClient()
@@ -200,5 +201,28 @@ describe('HTTP 传输层', () => {
 
     const missing = await fetch(`${BASE}:${server.port()}/sessions/does-not-exist/subagents`)
     expect(missing.status).toBe(404)
+  })
+
+  it('SSE 未消费帧积压超过上限时结束连接', async () => {
+    const sessionId = await createSession()
+    const responsePromise = fetch(`${BASE}:${server.port()}/sessions/${sessionId}/stream`)
+    model.enqueue({ text: '首帧' })
+    const turnRes = await fetch(`${BASE}:${server.port()}/turns`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionId, input: '触发首帧' }),
+    })
+    expect(turnRes.status).toBe(202)
+    const res = await responsePromise
+    expect(res.status).toBe(200)
+
+    for (let seq = 1; seq <= 20; seq++) {
+      sink.emit(sessionId, { kind: 'event', seq, type: 'user_message', payload: '积压' })
+    }
+
+    const reader = res.body!.getReader()
+    while (!(await reader.read()).done) {
+      // 消费到服务端因积压上限结束订阅
+    }
   })
 })

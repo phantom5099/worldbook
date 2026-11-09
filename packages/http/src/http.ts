@@ -50,8 +50,22 @@ function readJsonBody(req: IncomingMessage): Promise<unknown> {
   })
 }
 
-function sseWrite(res: ServerResponse, frame: unknown): void {
-  res.write(`data: ${JSON.stringify(frame)}\n\n`)
+function sseWrite(res: ServerResponse, frame: unknown): boolean {
+  return res.write(`data: ${JSON.stringify(frame)}\n\n`)
+}
+
+function waitForDrain(res: ServerResponse): Promise<void> {
+  return new Promise((resolve) => {
+    const done = () => {
+      res.off('drain', done)
+      res.off('close', done)
+      res.off('error', done)
+      resolve()
+    }
+    res.on('drain', done)
+    res.on('close', done)
+    res.on('error', done)
+  })
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -77,25 +91,35 @@ async function streamSession(
     connection: 'keep-alive',
   })
 
-  const iterator = deps.sink.attach(sessionId)[Symbol.asyncIterator]()
+  const subscription = deps.sink.attach(sessionId)
+  const iterator = subscription[Symbol.asyncIterator]()
   let closed = false
-  const heartbeat = setInterval(() => {
-    if (!closed) res.write(': ping\n\n')
-  }, HEARTBEAT_MS)
-  req.on('close', () => {
+  let heartbeat: ReturnType<typeof setInterval> | undefined
+  const shutdown = () => {
+    if (closed) return
     closed = true
-    clearInterval(heartbeat)
+    if (heartbeat !== undefined) clearInterval(heartbeat)
     void iterator.return?.()
-  })
+  }
+  heartbeat = setInterval(() => {
+    if (!closed && !res.writableNeedDrain) res.write(': ping\n\n')
+  }, HEARTBEAT_MS)
+  req.on('close', shutdown)
+  res.on('close', shutdown)
+  res.on('error', shutdown)
 
   try {
     while (true) {
       const { done, value } = await iterator.next()
       if (done || closed) break
-      sseWrite(res, value)
+      if (!sseWrite(res, value)) {
+        subscription.pause()
+        await waitForDrain(res)
+        if (!closed) subscription.resume()
+      }
     }
   } finally {
-    clearInterval(heartbeat)
+    if (heartbeat !== undefined) clearInterval(heartbeat)
     await iterator.return?.()
   }
   if (!closed) res.end()

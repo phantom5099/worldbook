@@ -28,4 +28,4 @@ turn 状态机。源码 `src/turn.ts`（`index.ts` 仅 re-export），测试 `te
 
 ## 内存模型
 
-回合快照以 sessionId 为键存在单一 Map 中：`claim` 写入 running 快照，`settle` 原地覆盖为终态快照（含 `reason`），记录不删除，作为下一次 `claim` 的编号基线与 `getState` 的来源（每会话一条，随见过的会话数线性增长，不做淘汰）。`claiming` 集合只在等待编号基线的异步窗口内占位，防止并发 claim 穿透互斥。
+回合快照以 sessionId 为键存在单一 Map 中：`claim` 写入 running 快照，`settle` 原地覆盖为终态快照（含 `reason`），记录不删除，作为下一次 `claim` 的编号基线与 `getState` 的来源。Map 插入序即最近使用序（`claim` / `settle` 均先删后插刷新）；终态快照总数超过 `options.maxEntries` 时从最久未用的一端淘汰，running 与正在 claim 的会话永不淘汰；`maxEntries` 缺省时不淘汰。被淘汰会话的下一次 `claim` 由 `TurnIdSource` 从持久化日志恢复编号，编号不重置。`claiming` 集合只在等待编号基线的异步窗口内占位，防止并发 claim 穿透互斥。

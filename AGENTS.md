@@ -45,7 +45,7 @@ AI 文字开放世界：单人、文字优先的 AI 叙事游戏。
 
 Node ≥ 22，包管理器 pnpm（workspace 根在仓库根）。当前无数据库实例时，涉及 PostgreSQL 的集成测试自动跳过（见 `packages/session/test/`）。
 
-- 命令：`pnpm test` / `pnpm typecheck` / `pnpm migrate`（数据库迁移，需 `DATABASE_URL`）/ `pnpm start`（进程入口）/ `pnpm smoke [-- --live]`（端到端冒烟）。
+- 命令：`pnpm test` / `pnpm typecheck` / `pnpm dev`（本地入口，加载 `.env.development`）/ `pnpm migrate`（数据库迁移，需 `DATABASE_URL`）/ `pnpm start`（进程入口，只读进程环境变量）/ `pnpm smoke [-- --live]`（端到端冒烟）。
 - 前端命令：在 `web/` 下 `pnpm dev` / `pnpm test` / `pnpm typecheck` / `pnpm build`，或在仓库根 `pnpm --filter @worldbook/web <script>`。
-- 环境配置：`APP_ENV`（development/production）选择仓库根的 `.env.<APP_ENV>`（已 gitignore，需自建）；模型供应商经 `MODEL_PRESET`（deepseek/gpt/glm）选预置，API key 放对应预置声明的环境变量。前端使用 `VITE_API_BASE`（会话接口基地址）、`VITE_SESSION_MODE=mock`（会话改用本地模拟）与开发代理目标 `API_TARGET`。
+- 环境配置：配置只来自环境变量，应用代码不加载文件；本地开发由 `pnpm dev` 的 `--env-file-if-exists` 加载仓库根 `.env.development`（已 gitignore，需自建），部署由平台注入同名变量。模型供应商经 `MODEL_PRESET`（deepseek/gpt/glm）选预置，API key 放对应预置声明的环境变量。进程内结构上限经 `TURN_STATE_MAX_ENTRIES`（默认 100000）、`SESSION_COUNTER_MAX_ENTRIES`（默认 100000）、`SINK_MAX_BUFFERED_FRAMES`（默认 1024）配置。前端使用 `VITE_API_BASE`（会话接口基地址）、`VITE_SESSION_MODE=mock`（会话改用本地模拟）与开发代理目标 `API_TARGET`。
 - 持续集成：`.github/workflows/ci.yml` 在 PR、push 到 `main` 与手动触发时运行；Node 22 执行后端类型检查，检测到 `web/package.json` 时再执行前端类型检查、测试与构建；Node 22/24 矩阵配合 PostgreSQL 18 执行迁移与全部测试。

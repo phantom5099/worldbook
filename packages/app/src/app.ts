@@ -57,6 +57,10 @@ export interface AppConfig {
   modelClient?: ModelClient
   system?: string
   maxSteps?: number
+  /** 进程内容器上限：turn 终态快照、会话 seq 计数器、SSE 单订阅缓冲。 */
+  turnStateMaxEntries: number
+  sessionCounterMaxEntries: number
+  sinkMaxBufferedFrames: number
   /** 配置后 startApp 启动 HTTP+SSE 传输层；缺省不启动（纯装配/测试用） */
   http?: HttpOptions
 }
@@ -73,12 +77,16 @@ function createAssemble(withDb: boolean): Plugin.Object<Context, AppConfig> {
         ? config.database.store
         : new PostgresSessionStore(ctx.db!.sql)
 
-      const session = new SessionService(store)
+      const session = new SessionService(store, {
+        maxEntries: config.sessionCounterMaxEntries,
+      })
       const context = new ContextService(session)
       const model = config.modelClient ?? new OpenAICompatClient(config.model)
       const tools = ctx.tools
-      const turns = new TurnRegistry(sessionTurnIds(session))
-      const sink = new EventSink()
+      const turns = new TurnRegistry(sessionTurnIds(session), {
+        maxEntries: config.turnStateMaxEntries,
+      })
+      const sink = new EventSink({ maxBufferedFrames: config.sinkMaxBufferedFrames })
       const agent = new AgentService({
         session,
         context,

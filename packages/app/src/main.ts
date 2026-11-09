@@ -1,22 +1,9 @@
 import { PROVIDER_PRESETS } from '@worldbook/model'
 import type { ProviderPresetName } from '@worldbook/model'
 import { startApp } from './app.js'
-
-/** 灰度开关：APP_ENV 选择 .env.<APP_ENV>；同一套装配代码，环境差异全部收敛在 env 文件里。 */
-function loadEnv(): void {
-  const envName = process.env.APP_ENV ?? 'development'
-  try {
-    process.loadEnvFile(`.env.${envName}`)
-  } catch {
-    console.error(`环境文件 .env.${envName} 不存在（APP_ENV=${envName}）。`)
-    process.exitCode = 1
-    process.exit(1)
-  }
-}
+import { readConfig } from './config.js'
 
 async function main() {
-  loadEnv()
-
   const databaseUrl = process.env.DATABASE_URL
   const presetName = process.env.MODEL_PRESET as ProviderPresetName | undefined
   const preset = presetName ? PROVIDER_PRESETS[presetName] : undefined
@@ -45,13 +32,14 @@ async function main() {
   }
 
   const ctx = await startApp({
+    ...readConfig(process.env),
     database: { url: databaseUrl },
     model: { baseUrl, apiKey, model: modelName },
     http: { port },
   })
 
   console.log(
-    `worldbook 已启动（APP_ENV=${process.env.APP_ENV ?? 'development'}，HTTP 端口 ${port}，服务：session/context/model/tools/agent/subagent）`,
+    `worldbook 已启动（HTTP 端口 ${port}，服务：session/context/model/tools/agent/subagent）`,
   )
 
   const shutdown = async () => {

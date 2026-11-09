@@ -59,4 +59,48 @@ describe('EventSink', () => {
     await done
     expect(frames).toEqual([])
   })
+
+  it('pause 期间丢弃 delta，event 帧照常缓冲', async () => {
+    const sink = new EventSink()
+    const stream = sink.attach('s1')
+    stream.pause()
+    sink.emit('s1', { kind: 'delta', text: 'dropped' })
+    sink.emit('s1', { kind: 'event', seq: 1, type: 'user_message', payload: 'hi' })
+    stream.resume()
+
+    const frames = await collect(stream, 1)
+    expect(frames).toEqual([{ kind: 'event', seq: 1, type: 'user_message', payload: 'hi' }])
+  })
+
+  it('delta 超过缓冲上限时丢弃，不结束订阅', async () => {
+    const sink = new EventSink({ maxBufferedFrames: 1 })
+    const stream = sink.attach('s1')
+    sink.emit('s1', { kind: 'delta', text: 'a' })
+    sink.emit('s1', { kind: 'delta', text: 'b' })
+    const iterator = stream[Symbol.asyncIterator]()
+
+    expect((await iterator.next()).value).toEqual({ kind: 'delta', text: 'a' })
+    sink.emit('s1', { kind: 'event', seq: 1, type: 'user_message', payload: 'x' })
+    expect((await iterator.next()).value).toEqual({
+      kind: 'event',
+      seq: 1,
+      type: 'user_message',
+      payload: 'x',
+    })
+    await iterator.return?.()
+  })
+
+  it('非 delta 帧超过缓冲上限时结束订阅', async () => {
+    const sink = new EventSink({ maxBufferedFrames: 2 })
+    const stream = sink.attach('s1')
+    const iterator = stream[Symbol.asyncIterator]()
+    sink.emit('s1', { kind: 'transition', phase: 'running' })
+    expect((await iterator.next()).value).toEqual({ kind: 'transition', phase: 'running' })
+
+    sink.emit('s1', { kind: 'event', seq: 1, type: 'user_message', payload: 'a' })
+    sink.emit('s1', { kind: 'event', seq: 2, type: 'user_message', payload: 'b' })
+    sink.emit('s1', { kind: 'event', seq: 3, type: 'user_message', payload: 'c' })
+
+    expect((await iterator.next()).done).toBe(true)
+  })
 })

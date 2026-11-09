@@ -1,6 +1,6 @@
 # app
 
-cordis 装配与进程入口。源码 `src/`：`app.ts`（装配）、`main.ts`（进程入口，APP_ENV 灰度开关）、`index.ts`（仅 re-export）；测试 `test/assembly.test.ts`。内存存储 MemoryStore 位于 session 包的 `testing` 子路径，由调用方注入。
+cordis 装配与进程入口。源码 `src/`：`app.ts`（装配）、`config.ts`（进程内上限的环境变量解析）、`main.ts`（进程入口）、`index.ts`（仅 re-export）；测试 `test/assembly.test.ts`。内存存储 MemoryStore 位于 session 包的 `testing` 子路径，由调用方注入。
 
 ## 结构
 
@@ -11,17 +11,18 @@ cordis 装配与进程入口。源码 `src/`：`app.ts`（装配）、`main.ts`�
 - 装配时把 SubagentService 的 `wake(sessionId, seq)` 回调接到 `AgentService.wake`，子代理结果/消息到达时以对应事件 seq 唤醒会话（活跃 turn 期间挂起，收尾时未被读到则补开一轮）。`wake` 在装配层是 `void` 契约：返回的 promise 由装配层 `catch` 后记录日志，subagent 侧不持有悬空 promise。
 - ctx 服务类型经 `declare module '@cordisjs/core'` 的 `interface Context` 合并提供（cordis 3.18.1：Service 子类用 `static [Service.provide]` 命名、`ctx.plugin` 注册、ready 后 `ctx.set` 暴露）。
 
-## 环境与灰度开关
+## 配置
 
-- `main.ts`：`APP_ENV`（默认 development）选择仓库根 `.env.<APP_ENV>`（gitignore，自建）；同一套装配代码，环境差异全部收敛在 env 文件。
+- 配置只来自环境变量：`main.ts` 直接读 `process.env`，应用代码不加载文件。本地开发用 `pnpm dev`（`tsx --env-file-if-exists=.env.development`），由启动命令加载仓库根的 `.env.development`（gitignore，自建）；部署由平台注入同名环境变量，`pnpm start` 不读任何文件。
 - 模型配置：`MODEL_PRESET`（deepseek/gpt/glm，见 model 包 `PROVIDER_PRESETS`）选中预置后只需对应 `apiKeyEnv` 声明的变量；或不用预置直接给 `MODEL_BASE_URL`/`MODEL_API_KEY`。`MODEL_NAME` 可覆盖预置默认模型，`HTTP_PORT` 缺省 3000，`DATABASE_URL` 必填。
+- 缓存上限：`config.ts` 的 `readConfig(env)` 解析 `TURN_STATE_MAX_ENTRIES`（turn 终态快照，默认 100000）、`SESSION_COUNTER_MAX_ENTRIES`（会话 seq 计数器，默认 100000）、`SINK_MAX_BUFFERED_FRAMES`（单订阅未消费帧，默认 1024）；非正整数抛错，启动失败。解析结果作为 `AppConfig` 的同名字段注入各服务构造参数。
 
 ## 不变量与边界
 
 - app 不接触工具注册表：工具注册由 tool 包的 `builtinTools` 插件完成，注册随插件作用域销毁；装配层只声明对 `tools` 服务的依赖。
 - `modelClient` 配置可注入 Mock（测试/冒烟）；生产走 OpenAICompatClient。
 - 装配插件不做任何运行期决策，只做构造与注册；业务逻辑全在下游模块。
-- 灰度开关即换 `APP_ENV`；供应商与环境不绑定（同一 env 文件里配什么就用什么）。
+- 环境差异只经环境变量表达，装配代码与启动命令不随环境分叉；供应商与环境不绑定。
 
 ## 依赖
 

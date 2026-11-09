@@ -6,6 +6,7 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
+    "dev": "tsx --env-file-if-exists=.env.development packages/app/src/main.ts",
     "start": "tsx packages/app/src/main.ts",
     "migrate": "tsx scripts/migrate.ts",
     "smoke": "tsx scripts/smoke.ts"
