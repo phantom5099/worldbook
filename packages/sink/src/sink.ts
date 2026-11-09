@@ -6,17 +6,47 @@ export type SinkFrame =
   | { kind: 'event'; seq: number; type: SessionEventType; payload: unknown }
   | { kind: 'delta'; text: string }
 
+export interface SinkSubscription extends AsyncIterable<SinkFrame> {
+  /** 背压期间暂停消费：delta 直接丢弃，其余帧继续缓冲。 */
+  pause(): void
+  resume(): void
+}
+
+export interface EventSinkOptions {
+  /** 单个订阅的未消费帧上限；缺省不限制。delta 超限丢弃，非 delta 超限结束该订阅。 */
+  maxBufferedFrames?: number
+}
+
 class FrameQueue {
   private buffer: SinkFrame[] = []
   private waiters: Array<() => void> = []
   private closed = false
   private released = false
+  private paused = false
 
-  constructor(private readonly onRelease: () => void) {}
+  constructor(
+    private readonly maxBufferedFrames: number | undefined,
+    private readonly onRelease: () => void,
+  ) {}
 
   push(frame: SinkFrame): void {
+    if (this.released) return
+    if (this.paused && frame.kind === 'delta') return
+    if (this.maxBufferedFrames !== undefined && this.buffer.length >= this.maxBufferedFrames) {
+      if (frame.kind === 'delta') return
+      this.release()
+      return
+    }
     this.buffer.push(frame)
     this.waiters.shift()?.()
+  }
+
+  pause(): void {
+    this.paused = true
+  }
+
+  resume(): void {
+    this.paused = false
   }
 
   close(): void {
@@ -47,8 +77,12 @@ class FrameQueue {
 export class EventSink {
   private consumers = new Map<SessionId, Set<FrameQueue>>()
 
-  attach(sessionId: SessionId): AsyncIterable<SinkFrame> {
-    const queue = new FrameQueue(() => this.detach(sessionId, queue))
+  constructor(private readonly options: EventSinkOptions = {}) {}
+
+  attach(sessionId: SessionId): SinkSubscription {
+    const queue = new FrameQueue(this.options.maxBufferedFrames, () =>
+      this.detach(sessionId, queue),
+    )
     let set = this.consumers.get(sessionId)
     if (!set) {
       set = new Set()
@@ -56,6 +90,8 @@ export class EventSink {
     }
     set.add(queue)
     return {
+      pause: () => queue.pause(),
+      resume: () => queue.resume(),
       [Symbol.asyncIterator]() {
         return {
           next: () => queue.next(),

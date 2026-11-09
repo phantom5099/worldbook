@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { foldTurnState, TurnAlreadyActiveError, TurnRegistry } from '../src/index.js'
 
-function registryWith(lastTurnId: (sessionId: string) => number = () => 0): TurnRegistry {
-  return new TurnRegistry({ lastTurnId: async (sessionId) => lastTurnId(sessionId) })
+function registryWith(
+  lastTurnId: (sessionId: string) => number = () => 0,
+  maxEntries?: number,
+): TurnRegistry {
+  return new TurnRegistry(
+    { lastTurnId: async (sessionId) => lastTurnId(sessionId) },
+    maxEntries === undefined ? {} : { maxEntries },
+  )
 }
 
 describe('TurnRegistry', () => {
@@ -57,6 +63,74 @@ describe('TurnRegistry', () => {
     registry.settle('s1', 'done')
     const second = await registry.claim('s1')
     expect(second.turnId).toBe(first.turnId + 1)
+  })
+
+  it('终态快照超过上限时淘汰最久未用的会话', async () => {
+    const registry = registryWith(undefined, 2)
+    for (const sessionId of ['s1', 's2', 's3']) {
+      await registry.claim(sessionId)
+      registry.settle(sessionId, 'done')
+    }
+    expect(registry.getState('s1')).toBeUndefined()
+    expect(registry.getState('s2')).toBeDefined()
+    expect(registry.getState('s3')).toBeDefined()
+  })
+
+  it('再次 claim 刷新最近使用序，淘汰最久未用的终态快照', async () => {
+    const registry = registryWith(undefined, 2)
+    await registry.claim('s1')
+    registry.settle('s1', 'done')
+    await registry.claim('s2')
+    registry.settle('s2', 'done')
+    await registry.claim('s1')
+    registry.settle('s1', 'done')
+    await registry.claim('s3')
+    registry.settle('s3', 'done')
+
+    expect(registry.getState('s2')).toBeUndefined()
+    expect(registry.getState('s1')).toBeDefined()
+    expect(registry.getState('s3')).toBeDefined()
+  })
+
+  it('settle 刷新最近使用序，从中间移到链尾后不被优先淘汰', async () => {
+    const registry = registryWith(undefined, 3)
+    await registry.claim('s1')
+    await registry.claim('s2')
+    registry.settle('s2', 'done')
+    await registry.claim('s3')
+    registry.settle('s3', 'done')
+    await registry.claim('s4')
+    registry.settle('s1', 'done')
+
+    expect(registry.getState('s1')).toBeDefined()
+    expect(registry.getState('s2')).toBeUndefined()
+    expect(registry.getState('s3')).toBeDefined()
+    expect(registry.getState('s4')).toBeDefined()
+  })
+
+  it('running 快照不参与淘汰，即使终态已超上限', async () => {
+    const registry = registryWith(undefined, 1)
+    await registry.claim('r1')
+    await registry.claim('r2')
+    await registry.claim('t')
+    registry.settle('t', 'done')
+
+    expect(registry.getState('r1')).toBeDefined()
+    expect(registry.getState('r2')).toBeDefined()
+    expect(registry.getState('t')).toBeUndefined()
+  })
+
+  it('被淘汰的会话再次 claim 时由编号来源恢复回合号', async () => {
+    let persisted = 0
+    const registry = registryWith(() => persisted, 1)
+    await registry.claim('s1')
+    registry.settle('s1', 'done')
+    persisted = 5
+    await registry.claim('s2')
+    registry.settle('s2', 'done')
+
+    expect(registry.getState('s1')).toBeUndefined()
+    await expect(registry.claim('s1')).resolves.toEqual({ turnId: 6 })
   })
 })
 

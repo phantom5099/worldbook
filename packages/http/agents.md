@@ -18,6 +18,7 @@ HTTP+SSE 传输层。源码 `src/http.ts`（`index.ts` 仅 re-export），测试
 
 - SSE 的 event 帧与 DB 一致（sink 保证 emit 前已落库）；delta 帧仅在线、不可重放。
 - 传输层无业务逻辑：不构造事件、不投影上下文；turn 的 claim 互斥复用 turn 包，AgentService.start 唯一入口。
-- 订阅释放只有一个出口：`streamSession` 的 `finally` 调 `iterator.return()`（幂等），正常结束、循环异常与 req close 都走同一路径；sink 侧据此清空未读 buffer 并出队。心跳随连接关闭清理。
+- 订阅释放只有一个出口：`streamSession` 的 `finally` 调 `iterator.return()`（幂等），正常结束、循环异常、req/res close 与 res error 都走同一路径；sink 侧据此清空未读 buffer 并出队。心跳随连接关闭清理。
+- 响应背压：`res.write` 返回 false 时暂停 sink 订阅并等待 drain（连接关闭或出错同样解除等待），仅在未关闭且 drain 后恢复；心跳在 `writableNeedDrain` 时跳过，避免向已积压的连接继续追加数据。
 - `stop()` 关闭监听并断开全部连接（closeAllConnections），供进程退出与冒烟脚本收尾。
 - 依赖 agent、session、sink、subagent、turn 的接口层；无 cordis、无 web 框架（node:http）。

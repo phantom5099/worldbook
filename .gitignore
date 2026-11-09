@@ -9,6 +9,7 @@ Thumbs.db
 # Environment and logs
 .env
 .env.*
+!.env.example
 *.log
 
 # Dependencies (pnpm workspace links / central store)

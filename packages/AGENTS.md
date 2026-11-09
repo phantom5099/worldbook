@@ -69,7 +69,7 @@ http ← subagent（子代理状态端点）
 | `agent` | LoopFactory 纯函数（turn/step 两级循环）；AgentService.start / wake 入口（活跃 turn 唤醒挂起、收尾按需补开）；孤儿 turn 修复 |
 | `subagent` | spawn（可选 sessionId 复用子会话）、send（同根互通信）、status/wait 日志折叠、listChildren；结果回注与按事件 seq 唤醒父会话 |
 | `http` | HTTP+SSE 传输层：POST /sessions、POST /turns（409 互斥）、GET /sessions/:id/stream、GET /sessions/:id/history、GET /sessions/:id/subagents |
-| `app` | cordis 插件装配：服务注册、依赖声明、进程入口、环境（APP_ENV）灰度开关 |
+| `app` | cordis 插件装配：服务注册、依赖声明、进程入口、环境变量配置 |
 
 基础层（db 这类存储/基础设施包）与业务模块平级放在 `packages/` 下，不设独立的 infra 目录。包管理（pnpm workspace 链接）与运行时装配（cordis，见 app 包）是两个独立层面。
 
@@ -91,14 +91,14 @@ http ← subagent（子代理状态端点）
 | 改 HTTP 路由 / SSE 端点 | `packages/http/src/http.ts` |
 | 改表结构 | `packages/db/migrations/`（新增版本文件）+ `packages/db/src/migrate.ts` 登记 `MIGRATIONS` |
 | 改装配 / 依赖注入 | `packages/app/src/app.ts` |
-| 改环境变量 / 灰度开关 / 进程入口 | `packages/app/src/main.ts` |
+| 改环境变量 / 进程内上限 / 进程入口 | `packages/app/src/config.ts`、`packages/app/src/main.ts` |
 | 新增工具给 agent 用 | 在 `packages/tool/src/tools/<域>/` 下按工具新建文件定义 `ToolDefinition`，在 `packages/tool/src/tools/index.ts` 的 `builtinTools` 插件里 `ctx.tools.register`（需要业务服务时在执行期从 ctx 解析） |
 | 新增跨包依赖 | 该包 `package.json` 加 `workspace:*`，并更新两侧 `agents.md` 的依赖方向 |
 
 ## 跨包不变量（改代码前先确认没有破坏）
 
 1. 事件日志是唯一真相源：任何进入 LLM 上下文或 SSE 的信息，除 delta 帧外必须先落库。
-2. seq 由 SessionService 在单会话内分配：冷会话首次 append 的计数器初始化单飞（并发 append 共用同一次 `maxSeq` 读取），分配段无 await，DB 主键兜底。写入者不唯一（turn 写本会话，`send` / `subagent_result` 写目标会话），turn 的 claim 只互斥本会话的回合，不承担 seq 串行。
+2. seq 由 SessionService 在单会话内分配：冷会话首次 append 的计数器初始化单飞（并发 append 共用同一次 `maxSeq` 读取），分配段无 await，DB 主键兜底；计数器缓存有界（落库中的会话不淘汰，失败待落库结束后重置）。写入者不唯一（turn 写本会话，`send` / `subagent_result` 写目标会话），turn 的 claim 只互斥本会话的回合，不承担 seq 串行。
 3. `settle` 是唯一终态出口且幂等；中断经 `TurnHandle.interrupt()` → AbortController → loop 收尾 → `settle('interrupted')`。
 4. loop 工厂是纯函数，不持有会话、不感知传输协议；模块依赖经构造参数注入。
 5. ToolService 的注册表运行期可变：内置工具由 tool 包的 `builtinTools` 插件经 `ctx.tools.register` 注册（注册随插件作用域销毁），loop 每步重新读取 specs；装配层只声明对 `tools` 服务的依赖。

@@ -6,6 +6,12 @@ import type { SessionEvent, SessionEventType, SessionId } from '../src/types.js'
 class FakeStore extends MemoryStore {
   failNextInsert: Error | null = null
   insertCalls = 0
+  maxSeqCalls = 0
+
+  override async maxSeq(sessionId: SessionId): Promise<number> {
+    this.maxSeqCalls++
+    return super.maxSeq(sessionId)
+  }
 
   override async insertEvents(
     sessionId: SessionId,
@@ -17,6 +23,43 @@ class FakeStore extends MemoryStore {
       this.failNextInsert = null
       throw error
     }
+    await super.insertEvents(sessionId, events)
+  }
+}
+
+class ControlledStore extends FakeStore {
+  private holding = 0
+  private calls = 0
+  private entered = 0
+  private entryWaiters: Array<() => void> = []
+  private gates = new Map<number, () => void>()
+  failOnRelease = new Set<number>()
+
+  holdNextInserts(count: number): void {
+    this.holding = count
+  }
+
+  async waitForInserts(count: number): Promise<void> {
+    while (this.entered < count) {
+      await new Promise<void>((resolve) => this.entryWaiters.push(resolve))
+    }
+  }
+
+  release(index: number): void {
+    this.gates.get(index)?.()
+  }
+
+  override async insertEvents(
+    sessionId: SessionId,
+    events: ReadonlyArray<SessionEvent>,
+  ): Promise<void> {
+    const index = this.calls++
+    this.entered++
+    for (const wake of this.entryWaiters.splice(0)) wake()
+    if (index < this.holding) {
+      await new Promise<void>((resolve) => this.gates.set(index, resolve))
+    }
+    if (this.failOnRelease.has(index)) throw new Error('db down')
     await super.insertEvents(sessionId, events)
   }
 }
@@ -86,6 +129,75 @@ describe('SessionService.append', () => {
 
     const history = await service.getHistory(id)
     expect(history.map((event) => event.seq)).toEqual([1, 2])
+  })
+
+  it('计数器超过上限时淘汰最久未用的会话，淘汰后从 DB 续接 seq', async () => {
+    const store = new FakeStore()
+    const a = await store.createSession({})
+    const b = await store.createSession({})
+    const service = new SessionService(store, { maxEntries: 1 })
+    await service.append(a, [{ type: 'user_message', payload: 'a' }])
+    await service.append(b, [{ type: 'user_message', payload: 'b' }])
+
+    const events = await service.append(a, [{ type: 'user_message', payload: 'a2' }])
+    expect(events[0]!.seq).toBe(2)
+    expect(store.maxSeqCalls).toBe(3)
+  })
+
+  it('再次 append 刷新最近使用序，淘汰最久未用的会话', async () => {
+    const store = new FakeStore()
+    const a = await store.createSession({})
+    const b = await store.createSession({})
+    const c = await store.createSession({})
+    const service = new SessionService(store, { maxEntries: 2 })
+    await service.append(a, [{ type: 'user_message', payload: 'a' }])
+    await service.append(b, [{ type: 'user_message', payload: 'b' }])
+    await service.append(a, [{ type: 'user_message', payload: 'a2' }])
+    await service.append(c, [{ type: 'user_message', payload: 'c' }])
+
+    const callsBefore = store.maxSeqCalls
+    const events = await service.append(a, [{ type: 'user_message', payload: 'a3' }])
+    expect(events[0]!.seq).toBe(3)
+    expect(store.maxSeqCalls).toBe(callsBefore)
+  })
+
+  it('落库中的会话计数器不被淘汰，后续 append 续接 seq', async () => {
+    const store = new ControlledStore()
+    const slow = await store.createSession({})
+    const fast = await store.createSession({})
+    const service = new SessionService(store, { maxEntries: 1 })
+    store.holdNextInserts(1)
+
+    const first = service.append(slow, [{ type: 'user_message', payload: 'a' }])
+    await store.waitForInserts(1)
+    await service.append(fast, [{ type: 'user_message', payload: 'b' }])
+    const second = service.append(slow, [{ type: 'user_message', payload: 'c' }])
+    await store.waitForInserts(3)
+    store.release(0)
+
+    expect((await first)[0]!.seq).toBe(1)
+    expect((await second)[0]!.seq).toBe(2)
+  })
+
+  it('落库失败时不立即丢弃仍在落库中的计数器', async () => {
+    const store = new ControlledStore()
+    const id = await store.createSession({})
+    const service = new SessionService(store)
+    store.holdNextInserts(2)
+
+    const first = service.append(id, [{ type: 'user_message', payload: 'a' }])
+    const second = service.append(id, [{ type: 'user_message', payload: 'b' }])
+    await store.waitForInserts(2)
+
+    store.failOnRelease.add(0)
+    store.release(0)
+    await expect(first).rejects.toThrow('db down')
+
+    const third = await service.append(id, [{ type: 'user_message', payload: 'c' }])
+    expect(third[0]!.seq).toBe(3)
+
+    store.release(1)
+    expect((await second)[0]!.seq).toBe(2)
   })
 
   it('append 后历史按 seq 升序返回，afterSeq 与 limit 生效', async () => {

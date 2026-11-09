@@ -13,7 +13,7 @@ import type { ModelClient } from '@worldbook/model'
 import { AgentService, sessionTurnIds } from '@worldbook/agent'
 import { SubagentService } from '@worldbook/subagent'
 import { createHttpServer } from '@worldbook/http'
-import type { HttpOptions, HttpServerHandle } from '@worldbook/http'
+import type { HttpServerHandle } from '@worldbook/http'
 
 declare module '@cordisjs/core' {
   interface Context {
@@ -57,8 +57,12 @@ export interface AppConfig {
   modelClient?: ModelClient
   system?: string
   maxSteps?: number
+  /** 各模块的进程内上限，装配时原样作为对应模块的 options。 */
+  session: { maxEntries: number }
+  turn: { maxEntries: number }
+  sink: { maxBufferedFrames: number }
   /** 配置后 startApp 启动 HTTP+SSE 传输层；缺省不启动（纯装配/测试用） */
-  http?: HttpOptions
+  http?: { port: number; host?: string }
 }
 
 /** 按配置构造装配插件：inject 随 database 形态生成，避免改写共享插件对象。 */
@@ -73,12 +77,12 @@ function createAssemble(withDb: boolean): Plugin.Object<Context, AppConfig> {
         ? config.database.store
         : new PostgresSessionStore(ctx.db!.sql)
 
-      const session = new SessionService(store)
+      const session = new SessionService(store, config.session)
       const context = new ContextService(session)
       const model = config.modelClient ?? new OpenAICompatClient(config.model)
       const tools = ctx.tools
-      const turns = new TurnRegistry(sessionTurnIds(session))
-      const sink = new EventSink()
+      const turns = new TurnRegistry(sessionTurnIds(session), config.turn)
+      const sink = new EventSink(config.sink)
       const agent = new AgentService({
         session,
         context,
