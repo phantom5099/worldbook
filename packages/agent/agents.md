@@ -12,7 +12,7 @@ turn/step 两级 ReAct 循环与对外入口。源码 `src/`：`loop.ts`（LoopF
 
 ## 单 step 流程
 
-getContextSnapshot（全量投影，回报快照覆盖的 seq）→ completeStream（delta 即时播发 sink）→ `assistant_message` 落库 → 有 toolCalls 则 `tool_call` 事件 → executeBatch → 逐条 `tool_result` 事件（单条 payload `{callId, name, status, result}`，与 context 投影配对）→ 继续。
+getContextSnapshot（全量投影，回报快照覆盖的 seq）→ completeStream（delta 即时播发 sink）→ `assistant_message` 落库 → 有 toolCalls 则 executeBatch → 逐条 `tool_result` 事件（单条 payload `{callId, name, status, result}`，与 context 投影配对）→ 继续。
 
 ## 不变量与边界
 

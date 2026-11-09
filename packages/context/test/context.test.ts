@@ -24,7 +24,7 @@ describe('projectMessages', () => {
     const toolCalls: AssistantToolCall[] = [{ callId: 'c1', name: 'roll', args: { sides: 6 } }]
     const messages = projectMessages([
       event('assistant_message', { text: '', toolCalls }),
-      event('tool_call', { callId: 'c1', name: 'roll', args: { sides: 6 } }),
+      event('subagent_spawned', {}),
       event('tool_result', { callId: 'c1', name: 'roll', status: 'ok', result: '4' }),
     ])
     expect(messages).toEqual([
@@ -114,10 +114,9 @@ describe('projectMessages', () => {
     ])
   })
 
-  it('turn/tool_call/spawned 等审计事件不进入上下文', () => {
+  it('turn_started/turn_ended/spawned 等审计事件不进入上下文', () => {
     const messages = projectMessages([
       event('turn_started', {}),
-      event('tool_call', { callId: 'c9', name: 'x', args: {} }),
       event('subagent_spawned', {}),
       event('turn_ended', { reason: 'done' }),
     ])

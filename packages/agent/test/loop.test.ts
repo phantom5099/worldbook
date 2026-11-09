@@ -85,7 +85,7 @@ describe('agent loop', () => {
     expect(collected[collected.length - 1]).toEqual({ kind: 'transition', phase: 'completed', reason: 'done' })
   })
 
-  it('工具往返：tool_call/tool_result 成对落库，结果进入下一轮上下文', async () => {
+  it('工具往返：工具结果落库，并进入下一轮上下文', async () => {
     const { session, model, tools, makeAgent } = setup()
     tools.register({
       name: 'echo',
@@ -105,19 +105,18 @@ describe('agent loop', () => {
       'turn_started',
       'user_message',
       'assistant_message',
-      'tool_call',
       'tool_result',
       'assistant_message',
       'turn_ended',
     ])
-    expect(history[3]!.payload).toMatchObject({ calls: [{ callId: 'call_1', name: 'echo' }] })
-    expect(history[4]!.payload).toMatchObject({
+    expect(history[2]!.payload).toMatchObject({ toolCalls: [{ callId: 'call_1', name: 'echo' }] })
+    expect(history[3]!.payload).toMatchObject({
       callId: 'call_1',
       name: 'echo',
       status: 'ok',
       result: '"ping"',
     })
-    expect(history[6]!.payload).toMatchObject({ reason: 'done', steps: 2 })
+    expect(history[5]!.payload).toMatchObject({ reason: 'done', steps: 2 })
 
     const secondRequest = model.requests[1]!
     expect(secondRequest.messages).toEqual([
@@ -144,7 +143,7 @@ describe('agent loop', () => {
     const handle = await makeAgent().start(sessionId, 'x')
     expect(await handle.done).toBe('done')
     const history = await session.getHistory(sessionId)
-    expect(history[4]!.payload).toMatchObject({ callId: 'call_1', status: 'error', result: '炸了' })
+    expect(history[3]!.payload).toMatchObject({ callId: 'call_1', status: 'error', result: '炸了' })
     expect(history[history.length - 1]!.payload).toMatchObject({ reason: 'done' })
   })
 

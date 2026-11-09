@@ -169,6 +169,42 @@ describe('OpenAICompatClient', () => {
     ])
   })
 
+  it('工具调用分片缺少 id 时生成 UUID', async () => {
+    const client = new OpenAICompatClient({
+      baseUrl: 'https://api.example.com/v1',
+      apiKey: 'sk-test',
+      model: 'test-model',
+      fetchImpl: fetchSse([
+        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"echo","arguments":"{}"}}]}}]}\n\n',
+        'data: {"choices":[{"delta":{"tool_calls":[{"index":1,"id":"","function":{"name":"look","arguments":"{}"}}]}}]}\n\n',
+        'data: {"choices":[{"delta":{"tool_calls":[{"index":2,"function":{"name":"search","arguments":"{}"}}]}}]}\n\n',
+        'data: {"choices":[{"delta":{"tool_calls":[{"index":2,"id":"call_9"}]}}]}\n\n',
+        'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n',
+        'data: [DONE]\n\n',
+      ]),
+    })
+
+    const events = []
+    for await (const ev of client.completeStream({
+      messages: [{ role: 'user', content: 'hi' }],
+      tools: [],
+      signal: controller().signal,
+    })) {
+      events.push(ev)
+    }
+
+    const message = events.at(-1)
+    expect(message?.type).toBe('message')
+    if (message?.type !== 'message') throw new Error('unreachable')
+    const ids = message.toolCalls.map((call) => call.callId)
+    const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+    expect(ids).toHaveLength(3)
+    expect(ids[0]).toMatch(uuid)
+    expect(ids[1]).toMatch(uuid)
+    expect(ids[0]).not.toBe(ids[1])
+    expect(ids[2]).toBe('call_9')
+  })
+
   it('非 2xx 抛出含状态码的错误', async () => {
     const client = new OpenAICompatClient({
       baseUrl: 'https://api.example.com/v1',
